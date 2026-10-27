@@ -1,0 +1,368 @@
+import type { Application, AppNotification, Vacancy } from "./types";
+
+// NOTE: this demo seed list is superseded by the backend's own seeded vacancies
+// (see backend/seed-vacancies.json) — the frontend fetches live data via api.getVacancies()
+// and no longer imports `vacancies` from this file. Kept here for reference/tests only,
+// typed loosely so it doesn't need the workflow fields the backend now owns (employerEmail,
+// status, remarks, approvedBy, approvedAt).
+export const vacancies: Omit<
+  Vacancy,
+  | "employerEmail" | "status" | "remarks" | "approvedBy" | "approvedAt"
+  | "workExperience" | "otherQualifications" | "acceptsPwd" | "pwdTypes"
+  | "acceptsReturningOfw" | "courseShsStrand" | "license" | "certification"
+  | "eligibility" | "languageDialect" | "validUntil"
+>[] = [
+  {
+    id: 1,
+    title: "Production Operator",
+    employer: "Gingoog Coconut Processing Corp.",
+    category: "Manufacturing",
+    location: "Brgy. Poblacion, Gingoog City",
+    salary: "₱15,000 – ₱18,000 / month",
+    type: "Full-time",
+    slots: 5,
+    posted: "2026-07-18",
+    qualification: ["High school graduate", "Willing to work rotating shifts", "No prior experience required"],
+    description:
+      "Operate coconut processing machinery under supervision, monitor production line quality, and maintain sanitation standards in the facility.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["machine operation", "quality control", "manufacturing"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 2,
+    title: "Sales Associate",
+    employer: "GreenMart Supermarket",
+    category: "Retail",
+    location: "J.R. Borja St., Gingoog City",
+    salary: "₱12,000 – ₱14,000 / month",
+    type: "Full-time",
+    slots: 3,
+    posted: "2026-07-20",
+    qualification: ["At least 2 years college level", "Good communication skills", "Customer service orientation"],
+    description:
+      "Assist customers on the sales floor, manage stock replenishment, and operate the POS system during shift hours.",
+    minEducationLevel: "Tertiary",
+    requiredSkills: ["customer service", "sales", "pos", "communication", "ms office"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 3,
+    title: "Delivery Rider",
+    employer: "QuickServe Logistics",
+    category: "Logistics",
+    location: "Gingoog City (city-wide)",
+    salary: "₱13,000 – ₱16,000 / month",
+    type: "Full-time",
+    slots: 4,
+    posted: "2026-07-15",
+    qualification: ["Valid driver's license (motorcycle)", "Owns a motorcycle", "Knowledge of city routes"],
+    description:
+      "Deliver parcels and food orders within Gingoog City using company-approved routes, and maintain delivery logs.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["driving", "motorcycle", "logistics", "navigation"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 4,
+    title: "Call Center Agent",
+    employer: "NorthLink BPO Solutions",
+    category: "BPO",
+    location: "Cagayan de Oro (satellite office)",
+    salary: "₱16,000 – ₱20,000 / month",
+    type: "Full-time",
+    slots: 10,
+    posted: "2026-07-10",
+    qualification: ["College graduate (any course)", "Fluent in English, conversational", "Willing to work night shift"],
+    description:
+      "Handle inbound customer service calls for a US-based telecom account, meeting quality and handle-time targets.",
+    minEducationLevel: "Tertiary",
+    requiredSkills: ["customer service", "communication", "english", "call center"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 5,
+    title: "Teacher's Aide",
+    employer: "Little Explorers Learning Center",
+    category: "Education",
+    location: "Brgy. Consuelo, Gingoog City",
+    salary: "₱10,000 – ₱12,000 / month",
+    type: "Full-time",
+    slots: 2,
+    posted: "2026-07-21",
+    qualification: ["Education units preferred, not required", "Patient and nurturing disposition", "Basic literacy in Filipino and English"],
+    description:
+      "Assist the lead teacher in preparing learning materials, supervising young learners, and monitoring classroom activities.",
+    minEducationLevel: "Senior High",
+    requiredSkills: ["teaching", "childcare", "communication"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 6,
+    title: "Construction Worker",
+    employer: "JR Builders Construction",
+    category: "Construction",
+    location: "Various sites, Gingoog City",
+    salary: "₱500 / day",
+    type: "Contractual",
+    slots: 8,
+    posted: "2026-07-12",
+    qualification: ["Physically fit", "Prior construction experience preferred", "Willing to travel to job sites"],
+    description:
+      "Perform general labor tasks on residential and commercial construction sites under a foreman's supervision.",
+    minEducationLevel: "Elementary",
+    requiredSkills: ["construction", "masonry", "carpentry work", "physical labor"],
+    minExperienceYears: 1,
+  },
+  {
+    id: 7,
+    title: "Restaurant Crew",
+    employer: "Mang Inasal – Gingoog Branch",
+    category: "Food Service",
+    location: "National Highway, Gingoog City",
+    salary: "₱11,000 – ₱13,000 / month",
+    type: "Full-time",
+    slots: 6,
+    posted: "2026-07-22",
+    qualification: ["High school graduate", "Can work weekends and holidays", "Food handler's certificate is a plus"],
+    description:
+      "Take orders, prepare food items per standard recipes, and maintain cleanliness of the dining and kitchen area.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["customer service", "food handling", "teamwork"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 8,
+    title: "Administrative Assistant",
+    employer: "Gingoog City Water District",
+    category: "Government / Utility",
+    location: "City Hall Compound, Gingoog City",
+    salary: "₱14,000 – ₱16,000 / month",
+    type: "Full-time",
+    slots: 1,
+    posted: "2026-07-08",
+    qualification: ["College graduate", "Computer literate (MS Office)", "Good written communication"],
+    description:
+      "Provide clerical and administrative support to the office, including records management and correspondence.",
+    minEducationLevel: "Tertiary",
+    requiredSkills: ["ms office", "computer literate", "communication", "records management", "bookkeeping"],
+    minExperienceYears: 1,
+  },
+  {
+    id: 9,
+    title: "Warehouse Staff",
+    employer: "Gingoog Trading Corp.",
+    category: "Logistics",
+    location: "Brgy. Kadministracion, Gingoog City",
+    salary: "₱12,500 – ₱14,500 / month",
+    type: "Full-time",
+    slots: 4,
+    posted: "2026-07-24",
+    qualification: ["High school graduate", "Able to lift up to 25kg", "Willing to work on shifting schedule"],
+    description:
+      "Receive, sort, and store incoming stock, prepare outbound orders for delivery, and keep the warehouse organized and accounted for.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["inventory", "warehouse operations", "physical labor", "records management"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 10,
+    title: "Bookkeeper",
+    employer: "Coastal Hardware & Supply",
+    category: "Finance / Accounting",
+    location: "Brgy. Poblacion, Gingoog City",
+    salary: "₱15,000 – ₱18,000 / month",
+    type: "Full-time",
+    slots: 1,
+    posted: "2026-07-23",
+    qualification: ["College graduate in Accountancy or related field", "Familiar with basic bookkeeping software", "Detail-oriented and organized"],
+    description:
+      "Maintain daily sales and expense records, reconcile accounts, and prepare simple financial reports for the owner.",
+    minEducationLevel: "Tertiary",
+    requiredSkills: ["bookkeeping", "ms office", "records management", "computer literate"],
+    minExperienceYears: 1,
+  },
+  {
+    id: 11,
+    title: "Housekeeping Staff",
+    employer: "Gingoog Bay Resort",
+    category: "Hospitality",
+    location: "Brgy. Sinuyak, Gingoog City",
+    salary: "₱11,500 – ₱13,000 / month",
+    type: "Full-time",
+    slots: 5,
+    posted: "2026-07-25",
+    qualification: ["High school graduate", "Hardworking and trustworthy", "Willing to work weekends and holidays"],
+    description:
+      "Clean and prepare guest rooms and common areas, restock amenities, and report maintenance issues to the front desk.",
+    minEducationLevel: "Elementary",
+    requiredSkills: ["housekeeping", "teamwork", "physical labor"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 12,
+    title: "IT Support Technician",
+    employer: "Gingoog City Water District",
+    category: "Government / Utility",
+    location: "City Hall Compound, Gingoog City",
+    salary: "₱16,000 – ₱19,000 / month",
+    type: "Full-time",
+    slots: 1,
+    posted: "2026-07-19",
+    qualification: ["College graduate in IT, Computer Science, or related field", "Basic troubleshooting of hardware and software", "Good communication skills"],
+    description:
+      "Provide first-line technical support to office staff, maintain computer equipment and network connectivity, and assist with basic system administration.",
+    minEducationLevel: "Tertiary",
+    requiredSkills: ["troubleshooting", "computer literate", "networking", "ms office", "communication"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 13,
+    title: "Security Guard",
+    employer: "SafeGuard Protective Services",
+    category: "Security",
+    location: "Various posts, Gingoog City",
+    salary: "₱13,500 / month",
+    type: "Full-time",
+    slots: 6,
+    posted: "2026-07-17",
+    qualification: ["High school graduate", "Valid Security Guard License (SOSIA) preferred", "Physically fit, no criminal record"],
+    description:
+      "Maintain security and safety of assigned premises, monitor entry and exit points, and prepare incident reports as needed.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["security", "surveillance", "physical labor"],
+    minExperienceYears: 0,
+  },
+  {
+    id: 14,
+    title: "Machine Operator (Feed Mill)",
+    employer: "Gingoog Agri-Feeds Inc.",
+    category: "Manufacturing",
+    location: "Brgy. Talusan, Gingoog City",
+    salary: "₱14,000 – ₱16,500 / month",
+    type: "Full-time",
+    slots: 3,
+    posted: "2026-07-16",
+    qualification: ["High school graduate", "Basic mechanical aptitude", "Willing to work rotating shifts"],
+    description:
+      "Operate and monitor feed-milling equipment, perform routine maintenance checks, and ensure output meets quality standards.",
+    minEducationLevel: "Secondary",
+    requiredSkills: ["machine operation", "quality control", "manufacturing", "maintenance"],
+    minExperienceYears: 1,
+  },
+  {
+    id: 15,
+    title: "Barista",
+    employer: "Kape't Batirol Coffeehouse",
+    category: "Food Service",
+    location: "J.R. Borja St., Gingoog City",
+    salary: "₱11,000 – ₱13,000 / month",
+    type: "Part-time",
+    slots: 3,
+    posted: "2026-07-26",
+    qualification: ["Senior High graduate", "Friendly and customer-focused", "Willing to work early morning shifts"],
+    description:
+      "Prepare coffee and other beverages to shop standards, take customer orders, and maintain a clean and welcoming counter area.",
+    minEducationLevel: "Senior High",
+    requiredSkills: ["customer service", "food handling", "teamwork", "communication"],
+    minExperienceYears: 0,
+  },
+];
+
+export const initialApplications: Omit<Application, "referralStatus" | "referredAt" | "employerStatus" | "employerRemarks">[] = [
+  {
+    id: 101,
+    vacancyId: 4,
+    status: "waiting",
+    dateApplied: "2026-07-14",
+    history: [
+      { label: "Pending", date: "2026-07-14" },
+      { label: "PESO is checking your application", date: "2026-07-15" },
+      { label: "Your Application is approved", date: "2026-07-16" },
+      { label: "Waiting for employer's decision", date: "2026-07-18" },
+    ],
+  },
+  {
+    id: 102,
+    vacancyId: 2,
+    status: "pending",
+    dateApplied: "2026-07-21",
+    history: [{ label: "Pending", date: "2026-07-21" }],
+  },
+];
+
+export const initialNotifications: AppNotification[] = [
+  {
+    id: 1,
+    message:
+      "Your application for Call Center Agent at NorthLink BPO Solutions is approved! PESO has referred you to the employer — waiting for their decision.",
+    date: "2026-07-18",
+    read: false,
+  },
+  {
+    id: 2,
+    message: "PESO staff is now checking your application for Call Center Agent at NorthLink BPO Solutions.",
+    date: "2026-07-15",
+    read: true,
+  },
+  {
+    id: 3,
+    message: "Your application for Sales Associate at GreenMart Supermarket is pending review.",
+    date: "2026-07-21",
+    read: false,
+  },
+  {
+    id: 4,
+    message: "Welcome to the PESO Gingoog City Job Matching Portal! Complete your profile to improve your match results.",
+    date: "2026-07-10",
+    read: true,
+  },
+];
+
+export const DISABILITY_TYPES = ["Visual", "Speech", "Hearing", "Physical", "Psychosocial", "Others"];
+
+export const SELF_EMPLOYED_SUBTYPES = [
+  "Fisherman/Fisherfolk",
+  "Vendor/Retailer",
+  "Home-based worker",
+  "Transport",
+  "Domestic Worker",
+  "Freelancer",
+  "Artisan/Craft Worker",
+  "Others",
+];
+
+export const JOBSEEKER_CATEGORIES = [
+  "New Entrant/Fresh Graduate",
+  "Finished Contract",
+  "Resigned",
+  "Retired",
+  "Terminated/Laid off (local)",
+  "Terminated/Laid off (abroad)",
+  "Terminated/Laid off due to calamity",
+  "Others",
+];
+
+export const LANGUAGES = ["English", "Filipino", "Mandarin"];
+export const LANGUAGE_SKILLS = ["Read", "Write", "Speak", "Understand"];
+
+export const REFERRED_TO_OPTIONS = ["SPES", "TUPAD", "JobStart", "GIP", "DILEEP", "TESDA Training", "Others"];
+
+export const OTHER_SKILLS_LIST = [
+  "Computer Literate",
+  "Driver",
+  "Electrician",
+  "Auto Mechanic",
+  "Beautician",
+  "Carpentry Work",
+  "Domestic Chores",
+  "Embroidery",
+  "Gardening",
+  "Masonry",
+  "Painter/Artist",
+  "Photography",
+  "Plumbing",
+  "Sewing Dresses",
+  "Stenography",
+  "Tailoring",
+];

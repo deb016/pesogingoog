@@ -1,0 +1,17 @@
+{
+  "name": "peso-gingoog-backend",
+  "version": "1.0.0",
+  "description": "REST API backend for the PESO Gingoog City Job Seeker Portal",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.5",
+    "pdfkit": "^0.20.2"
+  }
+}

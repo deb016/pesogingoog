@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/peso-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PESO Gingoog City — Job Seeker Portal</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- ============ TOAST ============ -->
+      <div id="toast" class="toast fixed top-5 right-5 z-50 max-w-sm rounded-lg shadow-lg px-4 py-3 text-sm font-medium text-white" style="background:var(--color-primary-dark)" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      <!-- ============ UNSAVED CHANGES MODAL ============ -->
+      <div id="unsavedModalOverlay" class="modal-overlay hidden">
+        <div class="modal-card p-6 fade-in">
+          <div class="flex items-start gap-3 mb-2">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style="background:#FCEFD9">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5A0F" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div>
+              <h3 class="font-display text-lg font-semibold">Save changes?</h3>
+              <p class="text-sm mt-1" style="color:var(--color-muted)">You have unsaved edits on your Jobseeker Profile. Do you want to save them before leaving this page?</p>
+            </div>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2 mt-5">
+            <button onclick="resolveUnsavedModal('save')" class="btn-primary flex-1 py-2.5 rounded-lg text-sm font-semibold">Yes, Save Changes</button>
+            <button onclick="resolveUnsavedModal('discard')" class="flex-1 py-2.5 rounded-lg text-sm font-semibold border" style="border-color:var(--color-border); color:var(--color-accent-dark)">No, Discard</button>
+          </div>
+          <button onclick="resolveUnsavedModal('cancel')" class="w-full text-center text-xs mt-3" style="color:var(--color-muted)">Cancel &mdash; stay on this page</button>
+        </div>
+      </div>
+
+      <!-- ============ RETURN FOR COMPLETION MODAL ============ -->
+      <div id="returnCompletionOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeReturnCompletionModal()">
+        <form id="returnCompletionForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitReturnForCompletion()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeReturnCompletionModal()}" role="dialog" aria-modal="true" aria-labelledby="returnCompletionTitle" aria-describedby="returnCompletionDescription">
+          <h3 id="returnCompletionTitle" class="font-display text-lg font-semibold">Return for Completion</h3>
+          <p id="returnCompletionDescription" class="text-sm mt-2" style="color:var(--color-muted)">Describe exactly what is missing or incorrect. This message will be shown to the applicant.</p>
+          <label for="returnCompletionRemarks" class="block text-xs font-semibold mt-5 mb-1.5">What needs to be completed?</label>
+          <textarea id="returnCompletionRemarks" aria-required="true" oninput="clearReturnCompletionError()" rows="5" maxlength="2000" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border); resize:vertical" placeholder="List the missing or incorrect information and what should be provided."></textarea>
+          <p id="returnCompletionError" class="hidden text-xs mt-1" style="color:#C0392B" role="alert">Please describe what needs to be corrected.</p>
+          <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-5">
+            <button type="button" onclick="closeReturnCompletionModal()" class="btn-outline px-4 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+            <button id="returnCompletionSubmit" type="submit" class="btn-primary px-4 py-2.5 rounded-lg text-sm font-semibold">Send for Completion</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ DOCUMENT PREVIEW MODAL (Sections 15-17) ============ -->
+      <div id="docPreviewOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeDocPreview()">
+        <div class="modal-card modal-card-lg p-5 fade-in">
+          <div class="flex items-center justify-between mb-3 gap-3">
+            <h3 class="font-display text-base font-semibold truncate" id="docPreviewTitle">Document Preview</h3>
+            <button onclick="closeDocPreview()" class="text-sm font-semibold px-2 py-1 flex-shrink-0" style="color:var(--color-muted)">&times; Close</button>
+          </div>
+          <div id="docPreviewBody" class="rounded-lg overflow-auto flex items-center justify-center" style="max-height:70vh; min-height:200px; background:var(--color-bg)">
+            <p class="text-sm p-8" style="color:var(--color-muted)">Loading preview&hellip;</p>
+          </div>
+          <div class="flex justify-end mt-3">
+            <a id="docPreviewDownload" href="#" download class="text-xs font-semibold px-3 py-2 rounded-lg border" style="border-color:var(--color-border)">Download</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ EMPLOYER: VIEW SEEKER PROFILE MODAL ============ -->
+      <div id="seekerProfileOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeSeekerProfileModal()">
+        <div class="modal-card modal-card-lg p-5 fade-in">
+          <div class="flex items-center justify-between mb-3 gap-3">
+            <h3 class="font-display text-base font-semibold truncate" id="seekerProfileModalTitle">Seeker Profile</h3>
+            <button onclick="closeSeekerProfileModal()" class="text-sm font-semibold px-2 py-1 flex-shrink-0" style="color:var(--color-muted)">&times; Close</button>
+          </div>
+          <div id="seekerProfileModalBody" class="overflow-auto" style="max-height:75vh">
+            <p class="text-sm p-8" style="color:var(--color-muted)">Loading profile&hellip;</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ VACANCY DETAILS MODAL ============ -->
+      <div id="vacancyDetailOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeVacancyDetailModal()">
+        <div class="modal-card modal-card-wide p-5 fade-in">
+          <div class="flex items-center justify-between mb-3 gap-3">
+            <h3 class="font-display text-base font-semibold truncate" id="vacancyDetailModalTitle">Vacancy Details</h3>
+            <button onclick="closeVacancyDetailModal()" class="text-sm font-semibold px-2 py-1 flex-shrink-0" style="color:var(--color-muted)">&times; Close</button>
+          </div>
+          <div id="vacancyDetailModalBody" class="overflow-auto" style="max-height:75vh">
+            <p class="text-sm p-8" style="color:var(--color-muted)">Loading vacancy details&hellip;</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ NAVBAR ============ -->
+      <div class="gov-strip text-[11px]">
+        <div class="max-w-7xl mx-auto px-5 h-7 flex items-center justify-between">
+          <span class="tracking-wide">Republic of the Philippines &middot; City Government of Gingoog, Misamis Oriental</span>
+          <span class="hidden sm:inline tracking-wide" style="color:var(--color-gold)">An Official PESO Gingoog City Web Portal</span>
+        </div>
+      </div>
+      <div class="flag-rule"></div>
+      <header class="sticky top-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur border-b" style="border-color:var(--color-border)">
+        <div class="max-w-7xl mx-auto px-5 h-20 flex items-center justify-between gap-4 relative">
+          <button onclick="nav('home')" class="flex items-center gap-3 group min-w-0">
+            <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-11 h-11 flex-shrink-0 seal-ring" />
+            <div class="brand-divider hidden sm:block"></div>
+            <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-11 h-11 flex-shrink-0 hidden sm:block" />
+            <div class="leading-tight text-left min-w-0">
+              <div class="font-poster text-[17px] sm:text-[19px] uppercase truncate" style="color:var(--color-primary)">PESO Gingoog City</div>
+              <div class="text-[10px] tracking-[0.12em] uppercase truncate" style="color:var(--color-muted)">Public Employment Service Office &middot; Misamis Oriental</div>
+            </div>
+          </button>
+          <nav class="desktop-nav hidden md:flex items-center gap-7 text-sm font-medium flex-shrink-0">
+            <button data-nav="home" onclick="nav('home')" class="nav-link">Home</button>
+            <button data-nav="jobs" onclick="nav('jobs')" class="nav-link"><span id="navJobsLabel">Find Jobs</span></button>
+            <button data-nav="about" onclick="nav('about')" class="nav-link">About PESO</button>
+          </nav>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <div id="navAuthArea" class="flex items-center gap-3"></div>
+            <button
+              id="mobileMenuToggle"
+              onclick="toggleMobileMenu()"
+              class="hamburger md:hidden p-2 -mr-1 rounded-lg hover:bg-black/5"
+              aria-label="Open menu"
+              aria-expanded="false"
+              aria-controls="mobileNavPanel"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line class="hamburger-line" x1="3" y1="6" x2="21" y2="6" />
+                <line class="hamburger-line" x1="3" y1="12" x2="21" y2="12" />
+                <line class="hamburger-line" x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- ============ MOBILE NAV PANEL ============ -->
+          <nav
+            id="mobileNavPanel"
+            class="mobile-nav-panel md:hidden flex flex-col text-sm font-medium bg-[var(--color-surface)] border-b shadow-lg"
+            style="border-color:var(--color-border)"
+            aria-label="Mobile"
+          >
+            <button data-nav="home" onclick="nav('home'); closeMobileMenu()" class="nav-link text-left px-5 py-3.5 border-b hover:bg-black/5" style="border-color:var(--color-border)">Home</button>
+            <button data-nav="jobs" onclick="nav('jobs'); closeMobileMenu()" class="nav-link text-left px-5 py-3.5 border-b hover:bg-black/5" style="border-color:var(--color-border)"><span id="navJobsLabelMobile">Find Jobs</span></button>
+            <button data-nav="about" onclick="nav('about'); closeMobileMenu()" class="nav-link text-left px-5 py-3.5 hover:bg-black/5">About PESO</button>
+          </nav>
+        </div>
+      </header>
+
+      <!-- ============ HOME VIEW ============ -->
+      <section id="view-home" class="view active">
+        <!-- HERO -->
+        <div class="relative overflow-hidden" style="background:linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)">
+          <div class="hero-diagonal"><span class="shard-gold"></span><span class="shard-red"></span><span class="shard-white"></span></div>
+          <div class="relative max-w-5xl mx-auto px-5 pt-16 pb-16 text-center text-white">
+            <div class="flex items-center justify-center gap-4 mb-6">
+              <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-14 h-14 seal-ring" />
+              <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-14 h-14" />
+            </div>
+            <p class="uppercase tracking-[0.25em] text-xs font-semibold mb-4" style="color:var(--color-gold)">Gingoog City &middot; Misamis Oriental</p>
+            <h1 class="font-poster text-4xl md:text-6xl uppercase leading-[1.05] mb-5">Find honest work,<br /><span style="color:var(--color-gold)">close to home.</span></h1>
+            <p class="max-w-xl mx-auto text-white/80 mb-8">Browse verified job openings from local employers, apply online, and let PESO staff match you to the right opportunity &mdash; free of charge, no agencies involved.</p>
+            <form onsubmit="event.preventDefault(); nav('jobs');" class="max-w-xl mx-auto bg-white rounded-xl p-2 flex flex-col sm:flex-row gap-2 shadow-xl">
+              <label for="heroSearch" class="sr-only">Search job title</label>
+              <input id="heroSearch" type="text" placeholder='Search job title, e.g. "Sales Associate"' class="flex-1 px-4 py-3 rounded-lg text-[var(--color-text)] text-sm border-0 focus:ring-0" />
+              <button type="submit" class="btn-accent px-6 py-3 rounded-lg font-semibold text-sm whitespace-nowrap">Search Jobs</button>
+            </form>
+          </div>
+          <!-- SIGNATURE: employment pulse strip -->
+          <div class="relative max-w-5xl mx-auto px-5 pb-8">
+            <div class="flex items-end gap-4 bg-white/10 rounded-xl px-6 py-5 backdrop-blur-sm">
+              <div>
+                <div class="text-2xl font-display font-bold text-white" id="statVacancies">8</div>
+                <div class="text-[11px] uppercase tracking-wide text-white/70">Open Vacancies</div>
+              </div>
+              <div class="w-px h-8 bg-white/20"></div>
+              <div>
+                <div class="text-2xl font-display font-bold text-white" id="statPlacements">37</div>
+                <div class="text-[11px] uppercase tracking-wide text-white/70">Placements this Month</div>
+              </div>
+              <div class="w-px h-8 bg-white/20"></div>
+              <div>
+                <div class="text-2xl font-display font-bold text-white" id="statEmployers">14</div>
+                <div class="text-[11px] uppercase tracking-wide text-white/70">Partner Employers</div>
+              </div>
+              <div class="hidden sm:flex items-end gap-[3px] h-8 ml-auto">
+                <div id="pulseBar1" class="pulse-tick" style="height:18px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar2" class="pulse-tick" style="height:22px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar3" class="pulse-tick" style="height:20px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar4" class="pulse-tick" style="height:28px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar5" class="pulse-tick" style="height:24px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar6" class="pulse-tick" style="height:32px; background:white"></div>
+                <div id="pulseBar7" class="pulse-tick" style="height:26px; background:rgb(107, 160, 225)"></div>
+                <div id="pulseBar8" class="pulse-tick" style="height:20px; background:rgb(107, 160, 225)"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FEATURED JOBS -->
+        <div class="max-w-7xl mx-auto px-5 py-16">
+          <div class="flex items-end justify-between mb-8">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-accent-dark)">Fresh openings</p>
+              <h2 class="font-display text-2xl font-semibold">Featured Vacancies</h2>
+            </div>
+            <button onclick="nav('jobs')" class="btn-outline text-sm font-semibold px-4 py-2 rounded-lg">View All Jobs &rarr;</button>
+          </div>
+          <div id="featuredJobsGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger-grid"></div>
+        </div>
+
+        <!-- HOW IT WORKS -->
+        <div class="border-y" style="background:var(--color-surface); border-color:var(--color-border)">
+          <div class="max-w-6xl mx-auto px-5 py-16">
+            <h2 class="font-display text-2xl font-semibold text-center mb-10">How the process works</h2>
+            <div class="grid md:grid-cols-4 gap-6">
+              <div class="text-center px-3">
+                <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center font-display font-bold text-white mb-3" style="background:var(--color-primary)">1</div>
+                <h3 class="font-semibold text-sm mb-1.5">Create your profile</h3>
+                <p class="text-xs" style="color:var(--color-muted)">Register and complete your profile with your education, skills, and experience.</p>
+              </div>
+              <div class="text-center px-3">
+                <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center font-display font-bold text-white mb-3" style="background:var(--color-primary)">2</div>
+                <h3 class="font-semibold text-sm mb-1.5">Apply online</h3>
+                <p class="text-xs" style="color:var(--color-muted)">Browse vacancies from employers verified by PESO and apply in a few clicks.</p>
+              </div>
+              <div class="text-center px-3">
+                <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center font-display font-bold text-white mb-3" style="background:var(--color-primary)">3</div>
+                <h3 class="font-semibold text-sm mb-1.5">Get matched</h3>
+                <p class="text-xs" style="color:var(--color-muted)">Our system compares your qualifications against employer requirements automatically.</p>
+              </div>
+              <div class="text-center px-3">
+                <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center font-display font-bold text-white mb-3" style="background:var(--color-accent)">4</div>
+                <h3 class="font-semibold text-sm mb-1.5">Get referred</h3>
+                <p class="text-xs" style="color:var(--color-muted)">PESO staff endorse qualified applicants directly to the employer for hiring.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ JOBS LISTING VIEW ============ -->
+      <section id="view-jobs" class="view">
+        <div class="max-w-7xl mx-auto px-5 py-10">
+          <h1 class="font-display text-2xl font-semibold mb-1" id="jobsPageHeading">Find Jobs</h1>
+          <p class="text-sm mb-6" style="color:var(--color-muted)">All vacancies below are encoded by PESO staff from walk-in employers and reviewed for accuracy.</p>
+          <div class="grid md:grid-cols-[240px_1fr] gap-8">
+            <aside class="space-y-6">
+              <div>
+                <label for="jobSearchInput" class="text-xs font-semibold uppercase tracking-wide block mb-2" style="color:var(--color-muted)">Search</label>
+                <input id="jobSearchInput" oninput="jobsFilterChanged()" type="text" placeholder="Job title or keyword" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border)" />
+              </div>
+              <div>
+                <label for="jobCategoryFilter" class="text-xs font-semibold uppercase tracking-wide block mb-2" style="color:var(--color-muted)">Category</label>
+                <select id="jobCategoryFilter" onchange="jobsFilterChanged()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border)">
+                  <option value="">All Categories</option>
+                </select>
+              </div>
+              <div>
+                <label for="jobSortOrder" class="text-xs font-semibold uppercase tracking-wide block mb-2" style="color:var(--color-muted)">Sort vacancies</label>
+                <select id="jobSortOrder" onchange="jobsFilterChanged()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border)">
+                  <option value="title">Job title (A–Z)</option>
+                  <option value="match">Best match</option>
+                </select>
+              </div>
+              <div class="rounded-lg p-4 text-xs" style="background:#fcefd9; color:#8a5a0f"><strong>Tip:</strong> Complete your profile before applying &mdash; the matching engine checks your qualifications against each vacancy automatically.</div>
+            </aside>
+            <div>
+              <p id="jobsCountLabel" class="text-sm mb-4" style="color:var(--color-muted)"></p>
+              <div id="jobsListGrid" class="grid sm:grid-cols-2 gap-5 stagger-grid"></div>
+              <div id="jobsPagination"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ JOB DETAIL VIEW ============ -->
+      <section id="view-jobdetail" class="view">
+        <div class="max-w-4xl mx-auto px-5 py-10" id="jobDetailContent"></div>
+      </section>
+
+      <!-- ============ ABOUT VIEW ============ -->
+      <section id="view-about" class="view">
+        <div class="max-w-4xl mx-auto px-5 py-16">
+          <p class="uppercase tracking-[0.2em] text-xs font-semibold mb-3" style="color:var(--color-accent)">Public Employment Service Office &middot; Gingoog City</p>
+          <h1 class="font-display text-3xl font-semibold mb-8">About PESO Gingoog City</h1>
+
+          <div class="card rounded-xl p-7 mb-6">
+            <h2 class="font-display text-xl font-semibold mb-3" style="color:var(--color-primary)">Mandate</h2>
+            <p class="text-sm leading-relaxed" style="color:var(--color-muted)">The Public Employment Service Office (PESO) is a non-fee-charging, multi-employment service facility established under Republic Act No. 8759, the PESO Act of 1999. It is linked with the provincial and regional offices of the Department of Labor and Employment (DOLE) for coordination and technical supervision, and with the DOLE central office as part of the national employment service network. PESO Gingoog City is committed to the prompt and efficient delivery of employment facilitation services, along with timely labor market information and DOLE program updates.</p>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 mb-6">
+            <div class="card rounded-xl p-7">
+              <h2 class="font-display text-xl font-semibold mb-3" style="color:var(--color-accent)">Vision</h2>
+              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">A Gingoog City that provides reliable, sustainable, and inclusive employment facilitation services &mdash; contributing to poverty alleviation and the city's overall economic development.</p>
+            </div>
+            <div class="card rounded-xl p-7">
+              <h2 class="font-display text-xl font-semibold mb-3" style="color:var(--color-accent)">Mission</h2>
+              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">To promote employment opportunities through referral for local and overseas job placement, livelihood and self-employment assistance, employability enhancement training, and career and employment coaching &mdash; improving the quality of life of Gingoognons.</p>
+            </div>
+          </div>
+
+          <div class="card rounded-xl p-7 mb-8">
+            <p class="text-sm leading-relaxed" style="color:var(--color-muted)">This portal digitizes registration, job browsing, application, and referral processing for PESO Gingoog City, while walk-in employers now register and get verified online as well, in line with our current system design.</p>
+          </div>
+
+          <div class="card rounded-xl overflow-hidden">
+            <div class="py-4 text-center" style="background:var(--color-success)">
+              <h2 class="font-display text-xl sm:text-2xl font-bold uppercase tracking-wide text-white">Contact Us</h2>
+            </div>
+            <iframe
+              title="PESO Gingoog City Hall on Google Maps"
+              class="w-full"
+              style="height: 300px; border: 0"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              src="https://www.google.com/maps?q=Gingoog+City+Hall,+F.+Dugenio+St,+Gingoog+City,+Misamis+Oriental&output=embed"
+            ></iframe>
+            <div class="text-center px-5 py-7">
+              <p class="font-display font-bold italic uppercase leading-snug text-base sm:text-lg">
+                3rd Floor East Wing, City Hall,<br />
+                F. Dugenio St., Brgy. 22-A
+              </p>
+              <p class="font-display font-bold italic text-base sm:text-lg mt-2">0926-548-623</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ LOGIN VIEW ============ -->
+      <section id="view-login" class="view">
+        <div class="max-w-md mx-auto px-5 py-16">
+          <div class="card rounded-xl p-8 fade-in">
+            <h1 class="font-display text-2xl font-semibold mb-1">Welcome back</h1>
+            <p class="text-sm mb-6" style="color:var(--color-muted)">Log in to track your applications and get notified about matches.</p>
+            <div class="mb-5">
+              <label class="text-xs font-semibold block mb-2">Login as:</label>
+              <div id="loginRoleSelector" class="grid grid-cols-2 gap-2 text-xs font-semibold"></div>
+            </div>
+            <form onsubmit="return doLogin(event)" autocomplete="off" class="space-y-4">
+              <div>
+                <label for="loginEmail" id="loginEmailLabel" class="text-xs font-semibold block mb-1.5">Email</label>
+                <input id="loginEmail" type="text" required autocomplete="off" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="you@example.com" />
+              </div>
+              <div>
+                <label for="loginPassword" class="text-xs font-semibold block mb-1.5">Password</label>
+                <div class="relative">
+                  <input id="loginPassword" type="password" required autocomplete="off" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" />
+                  <button type="button" onpointerdown="showPasswordVisibility('loginPassword')" onpointerup="hidePasswordVisibility('loginPassword')" onpointerleave="hidePasswordVisibility('loginPassword')" onpointercancel="hidePasswordVisibility('loginPassword')" onblur="hidePasswordVisibility('loginPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('loginPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('loginPassword')" aria-label="Hold to show password" id="loginPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
+                    <svg id="loginPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="loginPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="text-right -mt-2">
+                <button type="button" onclick="nav('forgot-password')" class="text-xs font-semibold" style="color:var(--color-primary)">Forgot Password?</button>
+              </div>
+              <button type="submit" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold">Log In</button>
+            </form>
+            <p class="text-sm mt-6 text-center" style="color:var(--color-muted)">Don't have an account? <button onclick="nav('register')" class="font-semibold" style="color:var(--color-primary)">Register</button></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ REGISTER VIEW ============ -->
+      <section id="view-register" class="view">
+        <div class="max-w-md mx-auto px-5 py-16">
+          <div class="card rounded-xl p-8 fade-in">
+            <h1 class="font-display text-2xl font-semibold mb-1">Create your account</h1>
+            <p class="text-sm mb-6" style="color:var(--color-muted)">Registration is free and only takes a minute. Staff and Admin accounts are provisioned separately by PESO — this form is for Job Seekers and Employers.</p>
+            <div class="mb-5">
+              <label class="text-xs font-semibold block mb-2">Register as:</label>
+              <div id="regRoleSelector" class="grid grid-cols-2 gap-2 text-xs font-semibold"></div>
+            </div>
+            <form onsubmit="return doRegister(event)" class="space-y-4">
+              <div>
+                <label for="regName" class="text-xs font-semibold block mb-1.5" id="regNameLabel">Full Name</label>
+                <input id="regName" type="text" required class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" />
+              </div>
+              <div>
+                <label for="regEmail" class="text-xs font-semibold block mb-1.5">Gmail Address</label>
+                <input id="regEmail" type="email" required autocomplete="email" placeholder="you@gmail.com" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                <p class="text-xs mt-1" style="color:var(--color-muted)">Must be a valid @gmail.com address — you'll need to verify it before logging in.</p>
+              </div>
+              <div>
+                <label for="regPassword" class="text-xs font-semibold block mb-1.5">Password</label>
+                <div class="relative">
+                  <input id="regPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <button type="button" onpointerdown="showPasswordVisibility('regPassword')" onpointerup="hidePasswordVisibility('regPassword')" onpointerleave="hidePasswordVisibility('regPassword')" onpointercancel="hidePasswordVisibility('regPassword')" onblur="hidePasswordVisibility('regPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('regPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('regPassword')" aria-label="Hold to show password" id="regPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
+                    <svg id="regPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="regPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label for="regConfirmPassword" class="text-xs font-semibold block mb-1.5">Confirm Password</label>
+                <div class="relative">
+                  <input id="regConfirmPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <button type="button" onpointerdown="showPasswordVisibility('regConfirmPassword')" onpointerup="hidePasswordVisibility('regConfirmPassword')" onpointerleave="hidePasswordVisibility('regConfirmPassword')" onpointercancel="hidePasswordVisibility('regConfirmPassword')" onblur="hidePasswordVisibility('regConfirmPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('regConfirmPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('regConfirmPassword')" aria-label="Hold to show password" id="regConfirmPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
+                    <svg id="regConfirmPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="regConfirmPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold">Create Account</button>
+            </form>
+            <p class="text-sm mt-6 text-center" style="color:var(--color-muted)">Already registered? <button onclick="nav('login')" class="font-semibold" style="color:var(--color-primary)">Log In</button></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ VERIFY EMAIL VIEW ============ -->
+      <section id="view-verify-email" class="view">
+        <div class="max-w-md mx-auto px-5 py-16">
+          <div class="card rounded-xl p-8 fade-in text-center" id="verifyEmailCard">
+            <h1 class="font-display text-2xl font-semibold mb-2">Check your Gmail</h1>
+            <p class="text-sm mb-6" style="color:var(--color-muted)" id="verifyEmailMessage">
+              We've sent a verification link to your Gmail address. Please open it to activate your account.
+            </p>
+            <div class="mb-4">
+              <label for="resendEmail" class="text-xs font-semibold block mb-1.5">Gmail Address</label>
+              <input id="resendEmail" type="email" autocomplete="email" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="you@gmail.com" />
+            </div>
+            <button type="button" onclick="openVerificationEmail()" class="btn-outline w-full py-2.5 rounded-lg text-sm font-semibold mb-3">Open Gmail</button>
+            <button type="button" onclick="doResendVerification()" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold">Resend Verification Email</button>
+            <p class="text-sm mt-6" style="color:var(--color-muted)"><button onclick="nav('login')" class="font-semibold" style="color:var(--color-primary)">Back to Log In</button></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FORGOT PASSWORD VIEW ============ -->
+      <section id="view-forgot-password" class="view">
+        <div class="max-w-md mx-auto px-5 py-16">
+          <div class="card rounded-xl p-8 fade-in">
+            <h1 class="font-display text-2xl font-semibold mb-1">Forgot your password?</h1>
+            <p class="text-sm mb-6" style="color:var(--color-muted)">Enter your registered Gmail address and we'll email you a secure link to reset your password.</p>
+            <form onsubmit="return doForgotPassword(event)" class="space-y-4">
+              <div>
+                <label for="forgotEmail" class="text-xs font-semibold block mb-1.5">Gmail Address</label>
+                <input id="forgotEmail" type="email" required autocomplete="email" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="you@gmail.com" />
+              </div>
+              <button type="submit" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold">Send Reset Link</button>
+            </form>
+            <p class="text-sm mt-6 text-center" style="color:var(--color-muted)"><button onclick="nav('login')" class="font-semibold" style="color:var(--color-primary)">Back to Log In</button></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ RESET PASSWORD VIEW ============ -->
+      <section id="view-reset-password" class="view">
+        <div class="max-w-md mx-auto px-5 py-16">
+          <div class="card rounded-xl p-8 fade-in">
+            <h1 class="font-display text-2xl font-semibold mb-1">Create a new password</h1>
+            <p class="text-sm mb-6" style="color:var(--color-muted)">Choose a new password for your account.</p>
+            <form onsubmit="return doResetPassword(event)" class="space-y-4">
+              <div>
+                <label for="resetPassword" class="text-xs font-semibold block mb-1.5">New Password</label>
+                <div class="relative">
+                  <input id="resetPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <button type="button" onclick="togglePasswordVisibility('resetPassword')" tabindex="-1" aria-label="Show password" id="resetPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
+                    <svg id="resetPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="resetPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label for="resetConfirmPassword" class="text-xs font-semibold block mb-1.5">Confirm New Password</label>
+                <div class="relative">
+                  <input id="resetConfirmPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <button type="button" onclick="togglePasswordVisibility('resetConfirmPassword')" tabindex="-1" aria-label="Show password" id="resetConfirmPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
+                    <svg id="resetConfirmPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="resetConfirmPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold">Update Password</button>
+            </form>
+            <p class="text-sm mt-6 text-center" style="color:var(--color-muted)"><button onclick="nav('login')" class="font-semibold" style="color:var(--color-primary)">Back to Log In</button></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ DASHBOARD VIEW ============ -->
+      <section id="view-dashboard" class="view">
+        <div class="max-w-7xl mx-auto px-5 py-8 grid md:grid-cols-[220px_1fr] gap-8">
+          <aside>
+            <div class="card rounded-xl p-4 mb-4 text-center">
+              <button type="button" onclick="document.getElementById('dashAvatarFile').click()" class="mx-auto mb-2 flex flex-col items-center gap-1" title="Change profile photo" aria-label="Change profile photo">
+                <span class="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden font-display font-bold text-white text-lg" style="background:var(--color-primary)" id="dashAvatarInitial">M</span>
+                <span class="text-[10px] font-semibold" style="color:var(--color-primary)">Change photo</span>
+              </button>
+              <input id="dashAvatarFile" type="file" accept="image/*" class="hidden" onchange="changeAvatar(event)" />
+              <div class="font-semibold text-sm" id="dashUserName">Maria Santos</div>
+              <div class="text-xs" id="dashUserRole" style="color:var(--color-muted)">Job Seeker</div>
+            </div>
+            <nav id="dashNav" aria-label="Dashboard sections" class="card rounded-xl p-2 text-sm font-medium"></nav>
+          </aside>
+          <div id="dashContent" class="fade-in"></div>
+        </div>
+      </section>
+
+      <footer class="border-t mt-12 py-8" style="background:var(--color-primary-dark); border-color:var(--color-border)">
+        <div class="max-w-7xl mx-auto px-5">
+          <div class="flex items-center gap-3 mb-4">
+            <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-8 h-8 seal-ring" />
+            <img src="/peso-logo.png" alt="PESO Logo" class="w-8 h-8" />
+            <span class="font-poster text-white text-sm uppercase tracking-wide">Gingoog City &middot; Misamis Oriental</span>
+          </div>
+          <div class="text-xs flex flex-col sm:flex-row justify-between gap-2" style="color:rgba(255,255,255,0.6)">
+            <span>&copy; 2026 Public Employment Service Office &mdash; Gingoog City</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

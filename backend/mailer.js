@@ -1,0 +1,148 @@
+// mailer.js
+// Sends Gmail-verification and password-reset emails via Brevo's transactional
+// email HTTP API (https://api.brevo.com/v3/smtp/email) using Node's built-in
+// fetch — no nodemailer, no SMTP socket connection. This matters if you deploy
+// this backend on Vercel: Vercel's serverless functions don't reliably support
+// long-lived outbound SMTP connections (the kind Gmail SMTP needs), but a plain
+// HTTPS POST request works everywhere, including there.
+//
+// Configure with environment variables so no secrets are hard-coded in the repo:
+//
+//   BREVO_API_KEY       your Brevo API key (Brevo dashboard -> Settings (gear icon)
+//                        -> SMTP & API -> API Keys -> Generate a new API key).
+//                        Starts with "xkeysib-...".
+//   BREVO_SENDER_EMAIL   the FROM address — must be a verified sender in Brevo
+//                        (Brevo dashboard -> Senders, Domains & Dedicated IPs).
+//   BREVO_SENDER_NAME    display name for the FROM address (optional, defaults
+//                        to "PESO Gingoog City").
+//   APP_BASE_URL         the URL of the deployed frontend, e.g. http://localhost:5173
+//                        (used to build the verification/reset links the user clicks)
+//
+// If BREVO_API_KEY / BREVO_SENDER_EMAIL are not set, mail sending falls back to
+// just logging the link to the console — handy for local development.
+"use strict";
+
+const APP_BASE_URL = (process.env.APP_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
+const LOGO_URL = process.env.BREVO_LOGO_URL || `${APP_BASE_URL}/peso-logo.png`;
+const BREVO_API_KEY = process.env.BREVO_API_KEY || "xkeysib-b2d7706eecaefbb113e6be0e89a535056ec9c0fab83efb9187f5e043f9896f74-uEPxOk7E";
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "peso.gingoog.portal@gmail.com";
+const SENDER_NAME = process.env.BREVO_SENDER_NAME || "PESO Gingoog City";
+const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+
+function isConfigured() {
+  return !!(BREVO_API_KEY && SENDER_EMAIL);
+}
+
+async function sendMail({ to, subject, html, text }) {
+  if (!isConfigured()) {
+    // Dev fallback: no real Brevo credentials configured yet, so just log it.
+    console.log("\n================ EMAIL (not actually sent — see mailer.js) ================");
+    console.log("To:", to);
+    console.log("Subject:", subject);
+    console.log(text || html);
+    console.log("=============================================================================\n");
+    return { sent: false };
+  }
+
+  let res;
+  try {
+    res = await fetch(BREVO_ENDPOINT, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "api-key": BREVO_API_KEY,
+      },
+      body: JSON.stringify({
+        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      }),
+    });
+  } catch (err) {
+    console.error("Brevo request failed (network error):", err.message);
+    return { sent: false, error: err.message };
+  }
+
+  if (!res.ok) {
+    // Brevo returns a JSON body describing what went wrong (bad API key, sender
+    // not verified, etc.) — surface it in the server log so it's easy to diagnose,
+    // without throwing and breaking whatever triggered the email (registration,
+    // password reset request, ...) since those should still succeed either way.
+    const body = await res.text().catch(() => "");
+    console.error(`Brevo API error (${res.status}):`, body);
+    return { sent: false, error: body };
+  }
+  return { sent: true };
+}
+
+function emailHtml({ heading, message, buttonLabel, link, expiry }) {
+  return `
+    <!doctype html>
+    <html>
+      <body style="margin:0;padding:0;background:#f2f5f7;color:#202833;font-family:Arial,Helvetica,sans-serif">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f5f7;padding:32px 12px">
+          <tr><td align="center">
+            <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e2e7eb">
+              <tr><td align="center" style="padding:32px 28px 20px;border-top:5px solid #1555a5">
+                <img src="${LOGO_URL}" alt="PESO Gingoog City" width="88" height="88" style="display:block;width:88px;height:88px;object-fit:contain;border:0">
+                <p style="margin:16px 0 0;color:#38516e;font-size:12px;font-weight:bold;letter-spacing:1px">PESO GINGOOG CITY</p>
+              </td></tr>
+              <tr><td style="padding:12px 36px 36px">
+                <h1 style="margin:0 0 18px;color:#173f70;font-size:25px;line-height:1.3;text-align:center">${heading}</h1>
+                <p style="margin:0 0 14px;font-size:16px;line-height:1.6">${message}</p>
+                <p style="margin:0 0 24px;color:#596575;font-size:15px;line-height:1.6">Use the button below to continue:</p>
+                <table role="presentation" cellspacing="0" cellpadding="0" align="center">
+                  <tr><td bgcolor="#1555a5" style="border-radius:4px">
+                    <a href="${link}" style="display:inline-block;padding:14px 26px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none">${buttonLabel}</a>
+                  </td></tr>
+                </table>
+                <p style="margin:24px 0 6px;color:#697586;font-size:13px;line-height:1.5">If the button does not work, copy this link into your browser:</p>
+                <p style="margin:0;word-break:break-all;font-size:13px;line-height:1.5"><a href="${link}" style="color:#1555a5">${link}</a></p>
+                <p style="margin:22px 0 0;color:#697586;font-size:13px;line-height:1.5">${expiry}</p>
+              </td></tr>
+              <tr><td style="padding:18px 28px;background:#f7f9fb;border-top:1px solid #e7ebef;color:#697586;font-size:12px;line-height:1.5;text-align:center">
+                Public Employment Service Office - Gingoog City
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>`;
+}
+
+async function sendVerificationEmail(email, token) {
+  const link = `${APP_BASE_URL}/?verify=${encodeURIComponent(token)}`;
+  return sendMail({
+    to: email,
+    subject: "Verify your PESO Gingoog City account",
+    text: `Welcome to the PESO Gingoog City Job Matching System!\n\nPlease verify your Gmail address by opening this link:\n${link}\n\nThis link expires in 24 hours. If you didn't create this account, you can ignore this email.`,
+    html: emailHtml({
+      heading: "Verify your Gmail address",
+      message: "Welcome to the PESO Gingoog City Job Matching and Employment Management System. Please confirm that this is your email address.",
+      buttonLabel: "Verify Email Address",
+      link,
+      expiry: "This link expires in 24 hours. If you did not create this account, you can ignore this email.",
+    }),
+  });
+}
+
+async function sendPasswordResetEmail(email, token) {
+  const link = `${APP_BASE_URL}/?reset=${encodeURIComponent(token)}`;
+  return sendMail({
+    to: email,
+    subject: "Reset your PESO Gingoog City password",
+    text: `We received a request to reset your PESO Gingoog City account password.\n\nOpen this link to choose a new password:\n${link}\n\nThis link expires in 1 hour and can only be used once. If you didn't request this, you can ignore this email — your password will not change.`,
+    html: emailHtml({
+      heading: "Reset your password",
+      message: "We received a request to reset the password for your PESO Gingoog City account.",
+      buttonLabel: "Reset Password",
+      link,
+      expiry: "This link expires in 1 hour and can only be used once. If you did not request this, you can ignore this email.",
+    }),
+  });
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail };
