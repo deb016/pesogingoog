@@ -18,14 +18,13 @@
 //   APP_BASE_URL         the URL of the deployed frontend, e.g. http://localhost:5173
 //                        (used to build the verification/reset links the user clicks)
 //
-// If BREVO_API_KEY / BREVO_SENDER_EMAIL are not set, mail sending falls back to
-// just logging the link to the console — handy for local development.
+// BREVO_API_KEY and BREVO_SENDER_EMAIL must be configured in the environment.
 "use strict";
 
 const APP_BASE_URL = (process.env.APP_BASE_URL || "http://localhost:5173").replace(/\/+$/, "");
 const LOGO_URL = process.env.BREVO_LOGO_URL || `${APP_BASE_URL}/peso-logo.png`;
-const BREVO_API_KEY = process.env.BREVO_API_KEY || "xkeysib-b2d7706eecaefbb113e6be0e89a535056ec9c0fab83efb9187f5e043f9896f74-uEPxOk7E";
-const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "peso.gingoog.portal@gmail.com";
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL;
 const SENDER_NAME = process.env.BREVO_SENDER_NAME || "PESO Gingoog City";
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 
@@ -35,13 +34,9 @@ function isConfigured() {
 
 async function sendMail({ to, subject, html, text }) {
   if (!isConfigured()) {
-    // Dev fallback: no real Brevo credentials configured yet, so just log it.
-    console.log("\n================ EMAIL (not actually sent — see mailer.js) ================");
-    console.log("To:", to);
-    console.log("Subject:", subject);
-    console.log(text || html);
-    console.log("=============================================================================\n");
-    return { sent: false };
+    const error = "Email not sent: configure BREVO_API_KEY and BREVO_SENDER_EMAIL in the backend environment.";
+    console.error(error);
+    return { sent: false, error };
   }
 
   let res;
