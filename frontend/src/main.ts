@@ -597,6 +597,16 @@ async function handleAuthLinkParams(): Promise<boolean> {
 }
 
 function doLogout() {
+  $("logoutConfirmOverlay").classList.remove("hidden");
+  $("logoutConfirmOverlay").querySelector<HTMLButtonElement>("button")?.focus();
+}
+
+function closeLogoutConfirmModal() {
+  $("logoutConfirmOverlay").classList.add("hidden");
+}
+
+function confirmLogout() {
+  closeLogoutConfirmModal();
   guardUnsavedProfile(() => {
     api.logout().catch(() => {});
     currentUser = null;
@@ -4952,6 +4962,8 @@ declare global {
     doLogin: typeof doLogin;
     doRegister: typeof doRegister;
     doLogout: typeof doLogout;
+    closeLogoutConfirmModal: typeof closeLogoutConfirmModal;
+    confirmLogout: typeof confirmLogout;
     changeAvatar: typeof changeAvatar;
     doResendVerification: typeof doResendVerification;
     openVerificationEmail: typeof openVerificationEmail;
@@ -5060,6 +5072,8 @@ window.hidePasswordVisibility = hidePasswordVisibility;
 window.doLogin = doLogin;
 window.doRegister = doRegister;
 window.doLogout = doLogout;
+window.closeLogoutConfirmModal = closeLogoutConfirmModal;
+window.confirmLogout = confirmLogout;
 window.changeAvatar = changeAvatar;
 window.doResendVerification = doResendVerification;
 window.openVerificationEmail = openVerificationEmail;

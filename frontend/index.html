@@ -31,6 +31,25 @@
         </div>
       </div>
 
+      <!-- ============ LOGOUT CONFIRMATION MODAL ============ -->
+      <div id="logoutConfirmOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeLogoutConfirmModal()">
+        <div class="modal-card p-6 fade-in" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle" aria-describedby="logoutConfirmDescription" onkeydown="if(event.key==='Escape'){event.preventDefault();closeLogoutConfirmModal()}">
+          <div class="flex items-start gap-3 mb-2">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#EAF1F8;color:var(--color-primary)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+            </div>
+            <div>
+              <h3 id="logoutConfirmTitle" class="font-display text-lg font-semibold">Log out?</h3>
+              <p id="logoutConfirmDescription" class="text-sm mt-1" style="color:var(--color-muted)">Are you sure you want to log out of your PESO account?</p>
+            </div>
+          </div>
+          <div class="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+            <button type="button" onclick="closeLogoutConfirmModal()" class="btn-outline flex-1 py-2.5 rounded-lg text-sm font-semibold">No, stay</button>
+            <button type="button" onclick="confirmLogout()" class="btn-primary flex-1 py-2.5 rounded-lg text-sm font-semibold">Yes, log out</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ============ RETURN FOR COMPLETION MODAL ============ -->
       <div id="returnCompletionOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeReturnCompletionModal()">
         <form id="returnCompletionForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitReturnForCompletion()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeReturnCompletionModal()}" role="dialog" aria-modal="true" aria-labelledby="returnCompletionTitle" aria-describedby="returnCompletionDescription">
