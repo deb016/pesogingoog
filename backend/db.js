@@ -18,6 +18,44 @@ const DB_USER = process.env.DB_USER || "root";
 const DB_PASSWORD = process.env.DB_PASSWORD || ""; // XAMPP's MySQL root has no password by default
 const DB_NAME = process.env.DB_NAME || "peso_db";
 
+// Hosted MySQL/MariaDB versions may reject TEXT defaults. Keep large payloads as
+// nullable TEXT and use VARCHAR for fields whose values fit within 191 characters.
+const TEXT_COLUMNS_WITH_LONG_VALUES = new Set([
+  "disability_types",
+  "job_seeker_category",
+  "preferred_local_areas",
+  "preferred_overseas_countries",
+  "language_proficiency",
+  "trainings",
+  "eligibilities",
+  "licenses",
+  "other_skills",
+  "work_experiences",
+  "referred_to",
+  "pwd_types",
+  "other_skills_custom",
+  "skills",
+  "no_documents_declared",
+  "verification_remarks",
+  "employer_description",
+  "employer_suspension_reason",
+  "remarks",
+  "employer_remarks",
+  "related_record",
+]);
+
+function mysqlCompatibleTextDefaults(sql) {
+  return sql.replace(
+    /^(\s*)(\w+)\s+TEXT(\s+(?:NOT NULL\s+)?DEFAULT\s+'[^']*')/gm,
+    (definition, indentation, column, defaultClause) =>
+      `${indentation}${column} ${
+        TEXT_COLUMNS_WITH_LONG_VALUES.has(column)
+          ? "TEXT NULL"
+          : `VARCHAR(191)${defaultClause}`
+      }`,
+  );
+}
+
 /* Roles: job_seeker | employer | staff | admin
  * Verification statuses (job seekers & employers): draft | pending_verification |
  * returned_for_completion | verified | rejected
@@ -413,7 +451,9 @@ async function migrateUsersTable() {
     ["password_reset_used", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, def] of wanted) {
-    if (!existingCols.has(name)) await db.run(`ALTER TABLE users ADD COLUMN ${name} ${def}`);
+    if (!existingCols.has(name)) {
+      await db.run(`ALTER TABLE users ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+    }
   }
   await db.run(`UPDATE users SET role = 'admin' WHERE is_admin = 1 AND role != 'admin'`);
   await db.run(`UPDATE users SET email_verified = 1 WHERE role IN ('admin', 'staff')`);
@@ -443,7 +483,9 @@ async function migrateVacanciesTable() {
     ["longitude", "DECIMAL(10,7) NULL"],
   ];
   for (const [name, def] of wanted) {
-    if (!existingCols.has(name)) await db.run(`ALTER TABLE vacancies ADD COLUMN ${name} ${def}`);
+    if (!existingCols.has(name)) {
+      await db.run(`ALTER TABLE vacancies ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+    }
   }
 }
 
@@ -457,7 +499,9 @@ async function migrateApplicationsTable() {
     ["referred_by", "TEXT DEFAULT ''"],
   ];
   for (const [name, def] of wanted) {
-    if (!existingCols.has(name)) await db.run(`ALTER TABLE applications ADD COLUMN ${name} ${def}`);
+    if (!existingCols.has(name)) {
+      await db.run(`ALTER TABLE applications ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+    }
   }
 }
 
@@ -573,7 +617,7 @@ async function init() {
   });
 
   for (const statement of CREATE_TABLE_STATEMENTS) {
-    await pool.query(statement);
+    await pool.query(mysqlCompatibleTextDefaults(statement));
   }
 
   await migrateUsersTable();
