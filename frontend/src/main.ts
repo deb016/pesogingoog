@@ -14,6 +14,8 @@ let currentUser: AuthUser | null = null;
 let applications: Application[] = [];
 let pendingStaffReferrals: StaffReferral[] = [];
 let notifications: AppNotification[] = [];
+let activeHiredNoticeId: number | null = null;
+const shownHiredNoticeIds = new Set<number>();
 let documents: DocumentMeta[] = [];
 let currentAvatarData = "";
 let myVerificationHistory: VerificationHistoryEntry[] = [];
@@ -134,6 +136,7 @@ async function loadUserData(): Promise<void> {
   } else {
     pendingStaffReferrals = [];
   }
+  showPendingHiredNotice();
   try {
     if (currentUser.role === "job_seeker") {
       myVerificationHistory = await api.getProfileHistory();
@@ -142,6 +145,58 @@ async function loadUserData(): Promise<void> {
     }
   } catch {
     // Non-critical — the status card just won't show a timeline until the next refresh.
+  }
+}
+
+function showPendingHiredNotice(): void {
+  if (currentUser?.role !== "job_seeker" || activeHiredNoticeId !== null) return;
+  const notice = notifications.find((item) =>
+    !item.read
+    && !shownHiredNoticeIds.has(item.id)
+    && item.message.startsWith("Congratulations! You have been marked as hired for "),
+  );
+  if (!notice) return;
+
+  activeHiredNoticeId = notice.id;
+  shownHiredNoticeIds.add(notice.id);
+  const title = document.getElementById("hiredNoticeTitle");
+  const message = document.getElementById("hiredNoticeMessage");
+  const vacancyTitle = notice.message
+    .replace(/^Congratulations! You have been marked as hired for /, "")
+    .replace(/\. Please proceed to the PESO office to claim your referral letter\.$/, "");
+  if (title) title.textContent = `Congratulations, you’re hired${vacancyTitle ? ` for ${vacancyTitle}` : ""}!`;
+  if (message) message.textContent = "Your employer has confirmed your hiring.";
+  $("hiredNoticeOverlay").classList.remove("hidden");
+  $("hiredNoticeOverlay").querySelector<HTMLButtonElement>("button")?.focus();
+}
+
+async function closeHiredNotice(): Promise<void> {
+  const notificationId = activeHiredNoticeId;
+  activeHiredNoticeId = null;
+  $("hiredNoticeOverlay").classList.add("hidden");
+  if (notificationId !== null) {
+    const notice = notifications.find((item) => item.id === notificationId);
+    if (notice) notice.read = true;
+    renderNavAuth();
+    try {
+      await api.markNotificationRead(notificationId);
+    } catch (err) {
+      if (notice) notice.read = false;
+      renderNavAuth();
+      showToast(errMsg(err, "Could not mark the hiring notice as read."));
+    }
+  }
+  showPendingHiredNotice();
+}
+
+async function refreshSeekerNotifications(): Promise<void> {
+  if (currentUser?.role !== "job_seeker") return;
+  try {
+    notifications = await api.getNotifications();
+    renderNavAuth();
+    showPendingHiredNotice();
+  } catch (err) {
+    console.error("Could not refresh job seeker notifications:", err);
   }
 }
 
@@ -3212,7 +3267,7 @@ let staffVacancyFilter = "pending_approval";
 let staffSeekersList: (AuthUser & { documentCount: number })[] = [];
 let staffEmployersList: AuthUser[] = [];
 let staffVacanciesList: Vacancy[] = [];
-let staffApplicationsList: (Application & { seekerEmail: string; seekerName: string; vacancyTitle: string; vacancyEmployer: string })[] = [];
+let staffApplicationsList: (Application & { seekerEmail: string; seekerName: string; seekerContact: string; vacancyTitle: string; vacancyEmployer: string })[] = [];
 /** Keep detail state independent between verification sections; dashTab clears the
  * active section's detail when Staff navigates away so returning always shows its list. */
 let staffSeekerDetailEmail: string | null = null;
@@ -3639,19 +3694,86 @@ function closeVacancyDetailModal() {
   $("vacancyDetailOverlay").classList.add("hidden");
 }
 
-function staffApplicationRow(a: Application & { seekerEmail: string; seekerName: string; vacancyTitle: string; vacancyEmployer: string }): string {
+function staffApplicationRow(a: Application & { seekerEmail: string; seekerName: string; seekerContact?: string; vacancyTitle: string; vacancyEmployer: string }): string {
+  const isHired = a.employerStatus === "accepted_hired" || a.status === "hired";
+  const seekerEmail = escapeReportHtml(a.seekerEmail);
+  const seekerContact = escapeReportHtml(a.seekerContact || "");
   return `
     <div class="card rounded-xl p-5">
       <div class="flex items-start justify-between gap-3 mb-2">
         <div>
-          <h4 class="font-semibold text-sm">${a.seekerName} ${a.isStaffReferral ? `<span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ml-1" style="background:#DCEAF7; color:#1D5A85">Staff Referral</span>` : ""}</h4>
-          <p class="text-xs" style="color:var(--color-muted)">${a.vacancyTitle} at ${a.vacancyEmployer} &middot; Applied ${a.dateApplied}</p>
+          <h4 class="font-semibold text-sm">${escapeReportHtml(a.seekerName || a.seekerEmail)} ${a.isStaffReferral ? `<span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ml-1" style="background:#DCEAF7; color:#1D5A85">Staff Referral</span>` : ""}</h4>
+          <p class="text-xs" style="color:var(--color-muted)">${escapeReportHtml(a.vacancyTitle)} at ${escapeReportHtml(a.vacancyEmployer)} &middot; Applied ${escapeReportHtml(a.dateApplied)}</p>
         </div>
         <span class="status-pill ${(STATUS_META[a.status] || STATUS_META.pending).pill} flex-shrink-0">${(STATUS_META[a.status] || STATUS_META.pending).label}</span>
       </div>
       <p class="text-xs" style="color:var(--color-muted)">Employer decision: ${a.employerStatus ? (EMPLOYER_STATUS_LABELS[a.employerStatus] || a.employerStatus) : "Not yet reviewed by the employer"}</p>
+      ${isHired ? `
+        <div class="rounded-xl p-4 mt-4 border" style="background:#F2F7EF;border-color:#D7E5D0;color:#285B38">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style="background:#E1EEDB">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold">Hired — referral letter follow-up</p>
+              <p class="text-xs mt-1 leading-relaxed">Please contact the seeker to arrange collection of their PESO referral letter.</p>
+              <div class="mt-3 space-y-1.5 text-xs">
+                <p class="break-all"><span class="font-semibold">Email:</span> ${seekerEmail}</p>
+                <p><span class="font-semibold">Phone:</span> ${seekerContact || "Not provided"}</p>
+              </div>
+              <button type="button" data-email="${escapeReportHtml(a.seekerEmail)}" data-name="${escapeReportHtml(a.seekerName || "")}" data-vacancy="${escapeReportHtml(a.vacancyTitle)}" onclick="openSeekerEmailModal(${a.id}, this.dataset.email, this.dataset.name, this.dataset.vacancy)" class="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-sm" style="background:var(--color-primary)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                Email seeker
+              </button>
+            </div>
+          </div>
+        </div>` : ""}
       ${currentUser?.role === "admin" ? `<div class="mt-3"><button onclick="adminDeleteApplicationAction(${a.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete Application</button></div>` : ""}
     </div>`;
+}
+
+let seekerEmailApplicationId: number | null = null;
+function openSeekerEmailModal(applicationId: number, email: string, seekerName: string, vacancyTitle: string) {
+  seekerEmailApplicationId = applicationId;
+  $("seekerEmailRecipient").textContent = `${seekerName || "Job seeker"} <${email}>`;
+  ($("seekerEmailMessage") as HTMLTextAreaElement).value = `Congratulations on being hired for ${vacancyTitle}.\n\nPlease contact or visit the PESO office to arrange the collection of your referral letter.\n\nRegards,\nPESO Gingoog City`;
+  $("seekerEmailError").textContent = "";
+  $("seekerEmailError").classList.add("hidden");
+  ($("seekerEmailSubmit") as HTMLButtonElement).disabled = false;
+  $("seekerEmailSubmit").textContent = "Send email";
+  $("seekerEmailOverlay").classList.remove("hidden");
+  requestAnimationFrame(() => $("seekerEmailMessage").focus());
+}
+
+function closeSeekerEmailModal() {
+  $("seekerEmailOverlay").classList.add("hidden");
+  seekerEmailApplicationId = null;
+}
+
+async function submitSeekerEmail() {
+  if (seekerEmailApplicationId === null) return;
+  const message = ($("seekerEmailMessage") as HTMLTextAreaElement).value.trim();
+  const error = $("seekerEmailError");
+  if (!message) {
+    error.textContent = "Please enter a message before sending.";
+    error.classList.remove("hidden");
+    return;
+  }
+  const submit = $("seekerEmailSubmit") as HTMLButtonElement;
+  submit.disabled = true;
+  submit.textContent = "Sending...";
+  error.textContent = "";
+  error.classList.add("hidden");
+  try {
+    await api.staffSendSeekerEmail(seekerEmailApplicationId, message);
+    closeSeekerEmailModal();
+    showToast("Email sent to the seeker.");
+  } catch (err) {
+    error.textContent = errMsg(err, "Could not send this email. Please try again.");
+    error.classList.remove("hidden");
+    submit.disabled = false;
+    submit.textContent = "Send email";
+  }
 }
 
 /** Section 34: the complete Job Seeker profile view — every stored field, organized into
@@ -4126,7 +4248,7 @@ let adminEmployerDetail: { profile: AuthUser; vacancies: Vacancy[]; applications
 let adminSeekerDetailReturnToEmployer: string | null = null;
 let adminSeekerDetailReturnToInventory = false;
 let adminInventoryVacancies: Vacancy[] = [];
-let adminInventoryApplications: (Application & { seekerEmail: string; seekerName: string; vacancyTitle: string; vacancyEmployer: string })[] = [];
+let adminInventoryApplications: (Application & { seekerEmail: string; seekerName: string; seekerContact?: string; vacancyTitle: string; vacancyEmployer: string })[] = [];
 
 function escapeReportHtml(value: string | number): string {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -4966,6 +5088,7 @@ declare global {
     doLogout: typeof doLogout;
     closeLogoutConfirmModal: typeof closeLogoutConfirmModal;
     confirmLogout: typeof confirmLogout;
+    closeHiredNotice: typeof closeHiredNotice;
     changeAvatar: typeof changeAvatar;
     doResendVerification: typeof doResendVerification;
     openVerificationEmail: typeof openVerificationEmail;
@@ -5064,6 +5187,9 @@ declare global {
     cancelAdminEdit: typeof cancelAdminEdit;
     saveAdminEdit: typeof saveAdminEdit;
     deleteAdminAccount: typeof deleteAdminAccount;
+    openSeekerEmailModal: typeof openSeekerEmailModal;
+    closeSeekerEmailModal: typeof closeSeekerEmailModal;
+    submitSeekerEmail: typeof submitSeekerEmail;
   }
 }
 window.nav = nav;
@@ -5076,6 +5202,10 @@ window.doRegister = doRegister;
 window.doLogout = doLogout;
 window.closeLogoutConfirmModal = closeLogoutConfirmModal;
 window.confirmLogout = confirmLogout;
+window.closeHiredNotice = closeHiredNotice;
+window.openSeekerEmailModal = openSeekerEmailModal;
+window.closeSeekerEmailModal = closeSeekerEmailModal;
+window.submitSeekerEmail = submitSeekerEmail;
 window.changeAvatar = changeAvatar;
 window.doResendVerification = doResendVerification;
 window.openVerificationEmail = openVerificationEmail;
@@ -5195,6 +5325,7 @@ async function init() {
   }
   await refreshHomeStats();
   window.setInterval(refreshHomeStats, 30000);
+  window.setInterval(() => void refreshSeekerNotifications(), 15000);
   window.setInterval(updateRegistrationExpiryTimers, 1000);
   updateRegistrationExpiryTimers();
   updateActiveNavLink("home"); // the home view starts active server-side in index.html

@@ -236,6 +236,9 @@ export async function staffGetSeekers(status?: string): Promise<(AuthUser & { do
 export async function staffGetSeeker(email: string): Promise<{ profile: AuthUser; documents: DocumentMeta[]; applications: (Application & { vacancyTitle?: string; vacancyEmployer?: string })[]; history: VerificationHistoryEntry[] }> {
   return request("GET", `/api/staff/seekers/${encodeURIComponent(email)}`);
 }
+export async function staffSendSeekerEmail(applicationId: number, message: string): Promise<void> {
+  await request("POST", `/api/staff/applications/${applicationId}/email`, { message });
+}
 export async function staffVerifySeeker(email: string): Promise<AuthUser> {
   const data = await request<{ profile: AuthUser }>("POST", `/api/staff/seekers/${encodeURIComponent(email)}/verify`);
   return data.profile;
@@ -291,7 +294,7 @@ export async function staffRejectVacancy(id: number, remarks: string): Promise<V
   const data = await request<{ vacancy: Vacancy }>("POST", `/api/staff/vacancies/${id}/reject`, { remarks });
   return data.vacancy;
 }
-export async function staffGetApplications(): Promise<(Application & { seekerEmail: string; seekerName: string; vacancyTitle: string; vacancyEmployer: string })[]> {
+export async function staffGetApplications(): Promise<(Application & { seekerEmail: string; seekerName: string; seekerContact: string; vacancyTitle: string; vacancyEmployer: string })[]> {
   const data = await request<{ applications: any[] }>("GET", "/api/staff/applications");
   return data.applications;
 }
@@ -436,6 +439,10 @@ export async function getNotifications(): Promise<AppNotification[]> {
 
 export async function markAllNotificationsRead(): Promise<void> {
   await request("POST", "/api/notifications/read-all");
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await request("POST", `/api/notifications/${id}/read`);
 }
 
 export async function deleteNotification(id: number): Promise<void> {

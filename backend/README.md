@@ -190,6 +190,7 @@ const toBase64 = (file) => new Promise((res) => {
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | POST | `/api/staff/refer` | `{ seekerEmail, vacancyId }` | Sends the seeker a job invitation; the seeker reviews vacancy details and must apply before the employer sees an application |
+| POST | `/api/staff/applications/:id/email` | `{ message }` | Staff/Admin can email a message of up to 4,000 characters to the seeker on a hired application; delivery uses the configured Brevo email service |
 
 The protected Admin dashboard in the frontend uses these endpoints for
 read-only application monitoring and the vacancy inventory.

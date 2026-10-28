@@ -108,6 +108,45 @@ function emailHtml({ heading, message, buttonLabel, link, expiry }) {
     </html>`;
 }
 
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[character]);
+}
+
+async function sendStaffFollowUpEmail({ to, seekerName, message, vacancyTitle }) {
+    const safeName = escapeHtml(seekerName || "there");
+    const safeVacancyTitle = escapeHtml(vacancyTitle || "your job application");
+    const safeMessage = escapeHtml(message).replace(/\r?\n/g, "<br>");
+    return sendMail({
+      to,
+      subject: "PESO Gingoog City: Hired — Referral Letter Follow-Up",
+      text: `Hello ${seekerName || "there"},\n\n${message}\n\nRegarding: ${vacancyTitle || "your job application"}\n\nPESO Gingoog City`,
+      html: `
+        <!doctype html>
+        <html>
+          <body style="margin:0;padding:24px;background:#f2f5f7;color:#202833;font-family:Arial,Helvetica,sans-serif">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e7eb">
+              <tr><td style="padding:24px 28px;border-top:5px solid #1555a5">
+                <p style="margin:0 0 20px;color:#38516e;font-size:12px;font-weight:bold;letter-spacing:1px">PESO GINGOOG CITY</p>
+                <h1 style="margin:0 0 20px;color:#173f70;font-size:22px">Message from PESO Gingoog City</h1>
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.6">Hello ${safeName},</p>
+                <p style="margin:0;font-size:15px;line-height:1.7">${safeMessage}</p>
+                <p style="margin:24px 0 0;color:#596575;font-size:13px;line-height:1.5"><strong>Regarding:</strong> ${safeVacancyTitle}</p>
+              </td></tr>
+              <tr><td style="padding:16px 28px;background:#f7f9fb;border-top:1px solid #e7ebef;color:#697586;font-size:12px;line-height:1.5;text-align:center">
+                Public Employment Service Office - Gingoog City
+              </td></tr>
+            </table>
+          </body>
+        </html>`,
+    });
+}
+
 async function sendVerificationEmail(email, token) {
   const link = `${APP_BASE_URL}/?verify=${encodeURIComponent(token)}`;
   return sendMail({
@@ -140,4 +179,4 @@ async function sendPasswordResetEmail(email, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail };

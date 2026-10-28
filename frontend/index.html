@@ -50,6 +50,47 @@
         </div>
       </div>
 
+      <!-- ============ HIRED SEEKER NOTICE ============ -->
+      <div id="hiredNoticeOverlay" class="modal-overlay hidden">
+        <div class="modal-card p-6 fade-in" role="dialog" aria-modal="true" aria-labelledby="hiredNoticeTitle" aria-describedby="hiredNoticeMessage">
+          <div class="w-12 h-12 rounded-full flex items-center justify-center mb-4" style="background:#E4EEDD;color:#1F6B3F">
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <h3 id="hiredNoticeTitle" class="font-display text-xl font-semibold">Congratulations, you’re hired!</h3>
+          <p id="hiredNoticeMessage" class="text-sm mt-2 leading-relaxed" style="color:var(--color-muted)"></p>
+          <div class="rounded-lg px-4 py-3 mt-4 text-sm font-medium" style="background:#EAF1F8;color:#1F4E8C">
+            Please proceed to the PESO office to claim your referral letter.
+          </div>
+          <button type="button" onclick="closeHiredNotice()" class="btn-primary w-full py-2.5 rounded-lg text-sm font-semibold mt-5">Okay</button>
+        </div>
+      </div>
+
+      <!-- ============ HIRED SEEKER EMAIL COMPOSER ============ -->
+      <div id="seekerEmailOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeSeekerEmailModal()">
+        <form id="seekerEmailForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitSeekerEmail()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeSeekerEmailModal()}" role="dialog" aria-modal="true" aria-labelledby="seekerEmailTitle" aria-describedby="seekerEmailDescription">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#EAF1F8;color:var(--color-primary)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+            </div>
+            <div class="min-w-0">
+              <h3 id="seekerEmailTitle" class="font-display text-lg font-semibold">Email seeker</h3>
+              <p id="seekerEmailDescription" class="text-sm mt-1" style="color:var(--color-muted)">Write a message about their referral letter follow-up.</p>
+            </div>
+          </div>
+          <div class="rounded-lg px-3 py-2 mt-4 text-sm" style="background:#F5F7FA">
+            <p class="text-xs font-semibold" style="color:var(--color-muted)">TO</p>
+            <p id="seekerEmailRecipient" class="font-medium break-all"></p>
+          </div>
+          <label for="seekerEmailMessage" class="block text-xs font-semibold mt-4 mb-1.5">Message</label>
+          <textarea id="seekerEmailMessage" required maxlength="4000" rows="7" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border);resize:vertical" placeholder="Write your message to the seeker..."></textarea>
+          <p id="seekerEmailError" class="hidden text-xs mt-2" style="color:#C0392B" role="alert"></p>
+          <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-5">
+            <button type="button" onclick="closeSeekerEmailModal()" class="btn-outline px-4 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+            <button id="seekerEmailSubmit" type="submit" class="btn-primary px-4 py-2.5 rounded-lg text-sm font-semibold">Send email</button>
+          </div>
+        </form>
+      </div>
+
       <!-- ============ RETURN FOR COMPLETION MODAL ============ -->
       <div id="returnCompletionOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeReturnCompletionModal()">
         <form id="returnCompletionForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitReturnForCompletion()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeReturnCompletionModal()}" role="dialog" aria-modal="true" aria-labelledby="returnCompletionTitle" aria-describedby="returnCompletionDescription">

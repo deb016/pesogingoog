@@ -28,7 +28,7 @@ const PDFDocument = require("pdfkit");
 })();
 
 const { db, hashPassword, verifyPassword, ready: dbReady } = require("./db");
-const { sendVerificationEmail, sendPasswordResetEmail } = require("./mailer");
+const { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail } = require("./mailer");
 
 const PORT = process.env.PORT || 3001;
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -1468,7 +1468,8 @@ route("GET", "/api/employer/applications/:id/seeker", async (req, res, params) =
   const user = await requireRole(req, res, ["employer"]);
   if (!user) return;
   const app = (await db.get(`
-    SELECT a.*, v.employer_email, v.title AS vacancy_title FROM applications a
+    SELECT a.*, seeker.name AS seeker_name, v.employer_email, v.title AS vacancy_title FROM applications a
+    JOIN users seeker ON seeker.email = a.email
     JOIN vacancies v ON v.id = a.vacancy_id WHERE a.id = ?
   `, [Number(params.id)]));
   if (!app || app.employer_email !== user.email) return send(res, 404, { error: "Application not found." });
@@ -1497,7 +1498,8 @@ route("PATCH", "/api/employer/applications/:id", async (req, res, params) => {
   const user = await requireRole(req, res, ["employer"]);
   if (!user) return;
   const app = (await db.get(`
-    SELECT a.*, v.employer_email, v.title AS vacancy_title FROM applications a
+    SELECT a.*, seeker.name AS seeker_name, v.employer_email, v.title AS vacancy_title FROM applications a
+    JOIN users seeker ON seeker.email = a.email
     JOIN vacancies v ON v.id = a.vacancy_id WHERE a.id = ?
   `, [Number(params.id)]));
   if (!app || app.employer_email !== user.email) return send(res, 404, { error: "Application not found." });
@@ -1510,7 +1512,19 @@ route("PATCH", "/api/employer/applications/:id", async (req, res, params) => {
   (await db.run("UPDATE applications SET employer_status = ?, employer_remarks = ?, status = ?, history = ? WHERE id = ?", [b.employerStatus, b.remarks || "", mapped.status, JSON.stringify(history), app.id]));
 
   await logActivity({ userEmail: app.email, userRole: "job_seeker", action: "employer_application_decision", relatedRecord: `application #${app.id}`, performedBy: user.email, performedByRole: "employer", remarks: b.employerStatus });
-  await notify(app.email, `${user.employer_business_name || user.name} updated your application for ${app.vacancy_title}: ${mapped.label}.`);
+  const isNewHire = b.employerStatus === "accepted_hired" && app.employer_status !== "accepted_hired";
+  await notify(
+    app.email,
+    isNewHire
+      ? `Congratulations! You have been marked as hired for ${app.vacancy_title}. Please proceed to the PESO office to claim your referral letter.`
+      : `${user.employer_business_name || user.name} updated your application for ${app.vacancy_title}: ${mapped.label}.`,
+  );
+  if (isNewHire) {
+    const staffAccounts = await db.all("SELECT email FROM users WHERE role = 'staff' AND email_verified = 1");
+    for (const staffAccount of staffAccounts) {
+      await notify(staffAccount.email, `${app.seeker_name || app.email} was marked as hired for ${app.vacancy_title} at ${user.employer_business_name || user.name}. Please contact the seeker to arrange collection of their PESO referral letter.`);
+    }
+  }
   const updated = (await db.get("SELECT * FROM applications WHERE id = ?", [app.id]));
   send(res, 200, { application: serializeApplication(updated) });
 });
@@ -1595,6 +1609,14 @@ route("POST", "/api/notifications/read-all", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) return send(res, 401, { error: "Not authenticated." });
   (await db.run("UPDATE notifications SET `read` = 1 WHERE email = ?", [user.email]));
+  send(res, 200, { ok: true });
+});
+
+route("POST", "/api/notifications/:id/read", async (req, res, params) => {
+  const user = await getUserFromRequest(req);
+  if (!user) return send(res, 401, { error: "Not authenticated." });
+  const result = await db.run("UPDATE notifications SET `read` = 1 WHERE id = ? AND email = ?", [Number(params.id), user.email]);
+  if (result.changes === 0) return send(res, 404, { error: "Notification not found." });
   send(res, 200, { ok: true });
 });
 
@@ -2029,15 +2051,68 @@ route("DELETE", "/api/referrals/:id", async (req, res, params) => {
 route("GET", "/api/staff/applications", async (req, res) => {
   if (!await requireStaffOrAdmin(req, res)) return;
   const rows = (await db.all(`
-    SELECT a.*, u.name AS seeker_name, v.title AS vacancy_title, v.employer AS vacancy_employer
+    SELECT a.*, u.name AS seeker_name, u.contact_number AS seeker_contact_number,
+      v.title AS vacancy_title, v.employer AS vacancy_employer
     FROM applications a
     JOIN users u ON u.email = a.email
     JOIN vacancies v ON v.id = a.vacancy_id
     ORDER BY a.id DESC
   `, []));
   send(res, 200, {
-    applications: rows.map((r) => ({ ...serializeApplication(r), seekerEmail: r.email, seekerName: r.seeker_name, vacancyTitle: r.vacancy_title, vacancyEmployer: r.vacancy_employer })),
+    applications: rows.map((r) => ({
+      ...serializeApplication(r),
+      seekerEmail: r.email,
+      seekerName: r.seeker_name,
+      seekerContact: r.seeker_contact_number || "",
+      vacancyTitle: r.vacancy_title,
+      vacancyEmployer: r.vacancy_employer,
+    })),
   });
+});
+
+route("POST", "/api/staff/applications/:id/email", async (req, res, params) => {
+  const staffUser = await requireStaffOrAdmin(req, res);
+  if (!staffUser) return;
+
+  const id = Number(params.id);
+  if (!Number.isInteger(id) || id < 1) return send(res, 400, { error: "Invalid application ID." });
+  const body = await readJsonBody(req);
+  if (typeof body.message !== "string" || !body.message.trim() || body.message.length > 4000) {
+    return send(res, 400, { error: "Write a message of up to 4,000 characters before sending." });
+  }
+
+  const application = await db.get(`
+    SELECT a.id, a.email, a.employer_status, a.status, u.name AS seeker_name, v.title AS vacancy_title
+    FROM applications a
+    JOIN users u ON u.email = a.email
+    JOIN vacancies v ON v.id = a.vacancy_id
+    WHERE a.id = ?
+  `, [id]);
+  if (!application) return send(res, 404, { error: "Application not found." });
+  if (application.employer_status !== "accepted_hired" && application.status !== "hired") {
+    return send(res, 409, { error: "Email follow-up is available only for hired applications." });
+  }
+
+  const result = await sendStaffFollowUpEmail({
+    to: application.email,
+    seekerName: application.seeker_name,
+    message: body.message.trim(),
+    vacancyTitle: application.vacancy_title,
+  });
+  if (!result.sent) {
+    return send(res, 502, { error: "The email service could not send this message. Please try again later or contact the system administrator." });
+  }
+
+  await logActivity({
+    userEmail: application.email,
+    userRole: "job_seeker",
+    action: "hired_seeker_email_sent",
+    relatedRecord: `application #${application.id}: ${application.vacancy_title}`,
+    performedBy: staffUser.email,
+    performedByRole: staffUser.role,
+    remarks: "Referral letter follow-up email sent.",
+  });
+  send(res, 200, { ok: true });
 });
 
 /* ================================================================
@@ -2440,7 +2515,8 @@ route("DELETE", "/api/admin/vacancies/:id", async (req, res, params) => {
 route("GET", "/api/admin/applications", async (req, res) => {
   if (!await requireAdmin(req, res)) return;
   const rows = (await db.all(`
-    SELECT a.*, u.name AS seeker_name, v.title AS vacancy_title, v.employer AS vacancy_employer
+    SELECT a.*, u.name AS seeker_name, u.contact_number AS seeker_contact_number,
+      v.title AS vacancy_title, v.employer AS vacancy_employer
     FROM applications a
     JOIN users u ON u.email = a.email
     JOIN vacancies v ON v.id = a.vacancy_id
@@ -2451,6 +2527,7 @@ route("GET", "/api/admin/applications", async (req, res) => {
       ...serializeApplication(r),
       seekerEmail: r.email,
       seekerName: r.seeker_name,
+      seekerContact: r.seeker_contact_number || "",
       vacancyTitle: r.vacancy_title,
       vacancyEmployer: r.vacancy_employer,
     })),
