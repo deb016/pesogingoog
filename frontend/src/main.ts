@@ -4418,6 +4418,7 @@ function adminSeekerListRow(s: AuthUser & { profileComplete: boolean; applicatio
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${s.name || s.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${s.email} &middot; ${s.applicationCount} application(s) &middot; ${s.documentCount} doc(s)</div>
+        ${s.verificationStatus === "draft" ? registrationExpiryTimerHtml(s.registrationExpiresAt) : ""}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
@@ -4433,6 +4434,7 @@ function adminEmployerListRow(e: AuthUser & { vacancyCount: number }): string {
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${e.employerBusinessName || e.employerCompanyName || e.name || e.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${e.email} &middot; ${e.vacancyCount} vacanc${e.vacancyCount === 1 ? "y" : "ies"}</div>
+        ${e.verificationStatus === "draft" ? registrationExpiryTimerHtml(e.registrationExpiresAt) : ""}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
