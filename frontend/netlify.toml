@@ -1,0 +1,5 @@
+[build.environment]
+  # Both values are intentionally embedded in the client bundle by Vite:
+  # - VITE_GOOGLE_MAPS_API_KEY is a browser key for the Maps JavaScript API (restrict it by HTTP referrer in Google Cloud)
+  # - VITE_API_BASE is a public backend URL
+  SECRETS_SCAN_OMIT_KEYS = "VITE_GOOGLE_MAPS_API_KEY,VITE_API_BASE"
