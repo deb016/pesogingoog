@@ -199,6 +199,7 @@ export interface DocumentMeta {
 export type UserRole = "job_seeker" | "employer" | "staff" | "admin";
 
 export type VerificationStatus = "draft" | "pending_verification" | "returned_for_completion" | "verified" | "rejected" | "suspended";
+export type ProfileEditRequestStatus = "none" | "pending" | "approved" | "declined";
 
 export type VacancyStatus = "draft" | "pending_approval" | "approved" | "returned_for_completion" | "rejected" | "expired" | "closed";
 
@@ -240,6 +241,9 @@ export interface AuthUser extends JobSeeker {
   verificationReviewedBy: string;
   verificationAttempts: number;
   registrationExpiresAt?: string;
+  profileEditRequestStatus: ProfileEditRequestStatus;
+  profileEditRequestRemarks: string;
+  profileEditRequestedAt: string;
 
   employerCompanyName: string;
   employerBusinessPermit: string;

@@ -58,13 +58,15 @@ first run.
   a `peso.db` with the old sample listings in it.
 
 
-- **Role-based login/registration.** The login screen now asks "Login as: Job
-  Seeker / Employer / Staff / Admin". Job Seekers and Employers can self-register;
-  Staff accounts are created by an Admin (Admin Dashboard → Staff Accounts). The
-  backend **always re-checks the selected role against the role stored in the
-  database** and rejects the login if they don't match — the frontend's selection
-  is never trusted on its own (see `requireRole` / the role check in
-  `POST /api/auth/login` in `backend/server.js`).
+- **Role-based login and access control.** The login screen accepts an email or
+  staff/admin username; the account's stored role is assigned automatically after
+  successful authentication. Job Seekers and Employers can self-register; Staff
+  accounts are created by an Admin (Admin Dashboard → Staff Accounts). Protected
+  backend routes enforce their allowed roles using the authenticated account
+  (`requireRole` in `backend/server.js`).
+- **Password requirements.** New and reset passwords must be at least 6
+  characters and contain at least one letter and one number. The same rule is
+  enforced for Staff/Admin account creation and password changes.
 - **Job Seeker verification workflow.** Saving a profile no longer unlocks job
   matching. A Job Seeker fills out the NSRP form, clicks **Save Progress** as
   often as they like, then **Submit for Verification** when it's complete. That
@@ -74,6 +76,11 @@ first run.
   required remarks), or **Reject** from the Staff Dashboard → Job Seeker
   Verification. A returned profile unlocks editing again; resubmitting re-locks
   it. Every action is recorded in an append-only `verification_history` table.
+- **Profile edit requests after a decision.** Job Seekers and Employers with
+  verified or rejected profiles can request another editing attempt from their
+  profile. Staff/Admin review requests in **Profile Edit Requests**. Approval
+  unlocks profile editing and allows resubmission for verification; declining
+  keeps the existing profile status and allows the user to request again later.
 - **Employer verification + vacancy approval**, mirroring the same workflow:
   Employers submit a company profile for verification; once verified, they can
   post job vacancies, but each vacancy still needs Staff approval

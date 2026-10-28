@@ -106,6 +106,77 @@
         </form>
       </div>
 
+      <!-- ============ PROFILE EDIT REQUEST MODAL ============ -->
+      <div id="profileEditRequestOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeProfileEditRequestModal()">
+        <form id="profileEditRequestForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitProfileEditRequest()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeProfileEditRequestModal()}" role="dialog" aria-modal="true" aria-labelledby="profileEditRequestTitle" aria-describedby="profileEditRequestDescription">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#EAF1F8;color:var(--color-primary)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+            </div>
+            <div>
+              <h3 id="profileEditRequestTitle" class="font-display text-lg font-semibold">Request permission to edit</h3>
+              <p id="profileEditRequestDescription" class="text-sm mt-1" style="color:var(--color-muted)">PESO Staff will review your request. If approved, you can update and resubmit your profile for verification.</p>
+            </div>
+          </div>
+          <label for="profileEditRequestRemarks" class="block text-xs font-semibold mt-5 mb-1.5">Reason for your request <span class="font-normal" style="color:var(--color-muted)">(optional)</span></label>
+          <textarea id="profileEditRequestRemarks" maxlength="1000" rows="4" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border);resize:vertical" placeholder="Briefly explain what you need to update..."></textarea>
+          <p class="text-xs mt-1.5" style="color:var(--color-muted)">You can submit another request if this one is declined.</p>
+          <p id="profileEditRequestError" class="hidden text-xs mt-2" style="color:#C0392B" role="alert"></p>
+          <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-5">
+            <button type="button" onclick="closeProfileEditRequestModal()" class="btn-outline px-4 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+            <button id="profileEditRequestSubmit" type="submit" class="btn-primary px-4 py-2.5 rounded-lg text-sm font-semibold">Send request</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ STAFF PROFILE EDIT REQUEST DECISION ============ -->
+      <div id="profileEditDecisionOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeProfileEditDecisionModal()">
+        <form id="profileEditDecisionForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); submitProfileEditDecision()" onkeydown="if(event.key==='Escape'){event.preventDefault();closeProfileEditDecisionModal()}" role="dialog" aria-modal="true" aria-labelledby="profileEditDecisionTitle" aria-describedby="profileEditDecisionDescription">
+          <div class="flex items-start gap-3">
+            <div id="profileEditDecisionIcon" class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#EAF1F8;color:var(--color-primary)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+            </div>
+            <div>
+              <h3 id="profileEditDecisionTitle" class="font-display text-lg font-semibold">Review profile edit request</h3>
+              <p id="profileEditDecisionDescription" class="text-sm mt-1 leading-relaxed" style="color:var(--color-muted)"></p>
+            </div>
+          </div>
+          <div id="profileEditDecisionRemarksWrap" class="hidden mt-5">
+            <label for="profileEditDecisionRemarks" class="block text-xs font-semibold mb-1.5">Note to the user <span class="font-normal" style="color:var(--color-muted)">(optional)</span></label>
+            <textarea id="profileEditDecisionRemarks" maxlength="1000" rows="3" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border);resize:vertical" placeholder="Add a brief explanation..."></textarea>
+          </div>
+          <p id="profileEditDecisionError" class="hidden text-xs mt-3" style="color:#C0392B" role="alert"></p>
+          <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-5">
+            <button type="button" onclick="closeProfileEditDecisionModal()" class="btn-outline px-4 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+            <button id="profileEditDecisionSubmit" type="submit" class="btn-primary px-4 py-2.5 rounded-lg text-sm font-semibold">Approve request</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ SHARED APP CONFIRMATION / INPUT DIALOG ============ -->
+      <div id="appDialogOverlay" class="modal-overlay hidden" onclick="if(event.target===this) resolveAppDialog(false)">
+        <form id="appDialogForm" class="modal-card p-6 fade-in" onsubmit="event.preventDefault(); resolveAppDialog(true)" onkeydown="if(event.key==='Escape'){event.preventDefault();resolveAppDialog(false)}" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+          <div class="flex items-start gap-3">
+            <div id="appDialogIcon" class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#FCEFD9;color:#8A5A0F">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            </div>
+            <div>
+              <h3 id="appDialogTitle" class="font-display text-lg font-semibold">Please confirm</h3>
+              <p id="appDialogMessage" class="text-sm mt-1 leading-relaxed" style="color:var(--color-muted)"></p>
+            </div>
+          </div>
+          <div id="appDialogInputWrap" class="hidden mt-5">
+            <label id="appDialogInputLabel" for="appDialogInput" class="block text-xs font-semibold mb-1.5"></label>
+            <textarea id="appDialogInput" maxlength="2000" rows="4" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border);resize:vertical"></textarea>
+            <p id="appDialogInputError" class="hidden text-xs mt-1.5" style="color:#C0392B" role="alert"></p>
+          </div>
+          <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 mt-5">
+            <button type="button" onclick="resolveAppDialog(false)" class="btn-outline px-4 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+            <button id="appDialogConfirm" type="submit" class="btn-primary px-4 py-2.5 rounded-lg text-sm font-semibold">Confirm</button>
+          </div>
+        </form>
+      </div>
+
       <!-- ============ DOCUMENT PREVIEW MODAL (Sections 15-17) ============ -->
       <div id="docPreviewOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeDocPreview()">
         <div class="modal-card modal-card-lg p-5 fade-in">
@@ -161,7 +232,7 @@
           <button onclick="nav('home')" class="flex items-center gap-3 group min-w-0">
             <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-11 h-11 flex-shrink-0 seal-ring" />
             <div class="brand-divider hidden sm:block"></div>
-            <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-11 h-11 flex-shrink-0 hidden sm:block" />
+            <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-14 h-14 flex-shrink-0 hidden sm:block" />
             <div class="leading-tight text-left min-w-0">
               <div class="font-poster text-[17px] sm:text-[19px] uppercase truncate" style="color:var(--color-primary)">PESO Gingoog City</div>
               <div class="text-[10px] tracking-[0.12em] uppercase truncate" style="color:var(--color-muted)">Public Employment Service Office &middot; Misamis Oriental</div>
@@ -212,7 +283,7 @@
           <div class="relative max-w-5xl mx-auto px-5 pt-16 pb-16 text-center text-white">
             <div class="flex items-center justify-center gap-4 mb-6">
               <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-14 h-14 seal-ring" />
-              <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-14 h-14" />
+              <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-[4.5rem] h-[4.5rem]" />
             </div>
             <p class="uppercase tracking-[0.25em] text-xs font-semibold mb-4" style="color:var(--color-gold)">Gingoog City &middot; Misamis Oriental</p>
             <h1 class="font-poster text-4xl md:text-6xl uppercase leading-[1.05] mb-5">Find honest work,<br /><span style="color:var(--color-gold)">close to home.</span></h1>
@@ -316,8 +387,8 @@
               <div>
                 <label for="jobSortOrder" class="text-xs font-semibold uppercase tracking-wide block mb-2" style="color:var(--color-muted)">Sort vacancies</label>
                 <select id="jobSortOrder" onchange="jobsFilterChanged()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border)">
-                  <option value="title">Job title (A–Z)</option>
-                  <option value="match">Best match</option>
+                  <option value="match" selected>Matches first, then A–Z</option>
+                  <option value="title">Job title (A–Z only)</option>
                 </select>
               </div>
               <div class="rounded-lg p-4 text-xs" style="background:#fcefd9; color:#8a5a0f"><strong>Tip:</strong> Complete your profile before applying &mdash; the matching engine checks your qualifications against each vacancy automatically.</div>
@@ -350,11 +421,11 @@
           <div class="grid md:grid-cols-2 gap-6 mb-6">
             <div class="card rounded-xl p-7">
               <h2 class="font-display text-xl font-semibold mb-3" style="color:var(--color-accent)">Vision</h2>
-              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">A Gingoog City that provides reliable, sustainable, and inclusive employment facilitation services &mdash; contributing to poverty alleviation and the city's overall economic development.</p>
+              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">To make Gingoog City a city that provides reliable, sustainable, and inclusive employment facilitation services that contribute to poverty alleviation and economic development.</p>
             </div>
             <div class="card rounded-xl p-7">
               <h2 class="font-display text-xl font-semibold mb-3" style="color:var(--color-accent)">Mission</h2>
-              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">To promote employment opportunities through referral for local and overseas job placement, livelihood and self-employment assistance, employability enhancement training, and career and employment coaching &mdash; improving the quality of life of Gingoognons.</p>
+              <p class="text-sm leading-relaxed" style="color:var(--color-muted)">To promote employment opportunities through referral for local or overseas job placement, livelihood/self-employment assistance, employability enhancement training, and provision of career and employment coaching services to improve the quality of life of the Gingoognons.</p>
             </div>
           </div>
 
@@ -390,20 +461,16 @@
         <div class="max-w-md mx-auto px-5 py-16">
           <div class="card rounded-xl p-8 fade-in">
             <h1 class="font-display text-2xl font-semibold mb-1">Welcome back</h1>
-            <p class="text-sm mb-6" style="color:var(--color-muted)">Log in to track your applications and get notified about matches.</p>
-            <div class="mb-5">
-              <label class="text-xs font-semibold block mb-2">Login as:</label>
-              <div id="loginRoleSelector" class="grid grid-cols-2 gap-2 text-xs font-semibold"></div>
-            </div>
-            <form onsubmit="return doLogin(event)" autocomplete="off" class="space-y-4">
+            <p class="text-sm mb-6" style="color:var(--color-muted)">Sign in with your email or staff/admin username. Your account role and access are applied automatically.</p>
+            <form onsubmit="return doLogin(event)" class="space-y-4">
               <div>
-                <label for="loginEmail" id="loginEmailLabel" class="text-xs font-semibold block mb-1.5">Email</label>
-                <input id="loginEmail" type="text" required autocomplete="off" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="you@example.com" />
+                <label for="loginEmail" class="text-xs font-semibold block mb-1.5">Email or username</label>
+                <input id="loginEmail" type="text" required autocomplete="username" class="w-full border rounded-lg px-3 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="Email" />
               </div>
               <div>
                 <label for="loginPassword" class="text-xs font-semibold block mb-1.5">Password</label>
                 <div class="relative">
-                  <input id="loginPassword" type="password" required autocomplete="off" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" />
+                  <input id="loginPassword" type="password" required autocomplete="current-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" placeholder="Password" />
                   <button type="button" onpointerdown="showPasswordVisibility('loginPassword')" onpointerup="hidePasswordVisibility('loginPassword')" onpointerleave="hidePasswordVisibility('loginPassword')" onpointercancel="hidePasswordVisibility('loginPassword')" onblur="hidePasswordVisibility('loginPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('loginPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('loginPassword')" aria-label="Hold to show password" id="loginPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
                     <svg id="loginPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg id="loginPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -443,17 +510,18 @@
               <div>
                 <label for="regPassword" class="text-xs font-semibold block mb-1.5">Password</label>
                 <div class="relative">
-                  <input id="regPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <input id="regPassword" type="password" required minlength="6" pattern="(?=.*[A-Za-z])(?=.*[0-9]).{6,}" title="Use at least 6 characters, including at least one letter and one number." autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
                   <button type="button" onpointerdown="showPasswordVisibility('regPassword')" onpointerup="hidePasswordVisibility('regPassword')" onpointerleave="hidePasswordVisibility('regPassword')" onpointercancel="hidePasswordVisibility('regPassword')" onblur="hidePasswordVisibility('regPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('regPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('regPassword')" aria-label="Hold to show password" id="regPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
                     <svg id="regPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg id="regPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                   </button>
                 </div>
+                <p class="text-xs mt-1" style="color:var(--color-muted)">Use at least 6 characters, including at least one letter and one number.</p>
               </div>
               <div>
                 <label for="regConfirmPassword" class="text-xs font-semibold block mb-1.5">Confirm Password</label>
                 <div class="relative">
-                  <input id="regConfirmPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <input id="regConfirmPassword" type="password" required minlength="6" pattern="(?=.*[A-Za-z])(?=.*[0-9]).{6,}" title="Use at least 6 characters, including at least one letter and one number." autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
                   <button type="button" onpointerdown="showPasswordVisibility('regConfirmPassword')" onpointerup="hidePasswordVisibility('regConfirmPassword')" onpointerleave="hidePasswordVisibility('regConfirmPassword')" onpointercancel="hidePasswordVisibility('regConfirmPassword')" onblur="hidePasswordVisibility('regConfirmPassword')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('regConfirmPassword')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('regConfirmPassword')" aria-label="Hold to show password" id="regConfirmPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
                     <svg id="regConfirmPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg id="regConfirmPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -515,17 +583,18 @@
               <div>
                 <label for="resetPassword" class="text-xs font-semibold block mb-1.5">New Password</label>
                 <div class="relative">
-                  <input id="resetPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <input id="resetPassword" type="password" required minlength="6" pattern="(?=.*[A-Za-z])(?=.*[0-9]).{6,}" title="Use at least 6 characters, including at least one letter and one number." autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
                   <button type="button" onclick="togglePasswordVisibility('resetPassword')" tabindex="-1" aria-label="Show password" id="resetPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
                     <svg id="resetPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg id="resetPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                   </button>
                 </div>
+                <p class="text-xs mt-1" style="color:var(--color-muted)">Use at least 6 characters, including at least one letter and one number.</p>
               </div>
               <div>
                 <label for="resetConfirmPassword" class="text-xs font-semibold block mb-1.5">Confirm New Password</label>
                 <div class="relative">
-                  <input id="resetConfirmPassword" type="password" required minlength="6" autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
+                  <input id="resetConfirmPassword" type="password" required minlength="6" pattern="(?=.*[A-Za-z])(?=.*[0-9]).{6,}" title="Use at least 6 characters, including at least one letter and one number." autocomplete="new-password" class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
                   <button type="button" onclick="togglePasswordVisibility('resetConfirmPassword')" tabindex="-1" aria-label="Show password" id="resetConfirmPassword-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
                     <svg id="resetConfirmPassword-eye-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     <svg id="resetConfirmPassword-eye-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted); display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.9 21.9 0 0 1 5.06-6.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -562,7 +631,7 @@
         <div class="max-w-7xl mx-auto px-5">
           <div class="flex items-center gap-3 mb-4">
             <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-8 h-8 seal-ring" />
-            <img src="/peso-logo.png" alt="PESO Logo" class="w-8 h-8" />
+            <img src="/peso-logo.png" alt="PESO Logo" class="w-10 h-10" />
             <span class="font-poster text-white text-sm uppercase tracking-wide">Gingoog City &middot; Misamis Oriental</span>
           </div>
           <div class="text-xs flex flex-col sm:flex-row justify-between gap-2" style="color:rgba(255,255,255,0.6)">

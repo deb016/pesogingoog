@@ -1,4 +1,4 @@
-import type { ActivityLogEntry, Application, AppNotification, AuthUser, DocumentMeta, StaffReferral, UserRole, Vacancy, VerificationHistoryEntry } from "./types";
+import type { ActivityLogEntry, Application, AppNotification, AuthUser, DocumentMeta, StaffReferral, Vacancy, VerificationHistoryEntry } from "./types";
 
 /** Where the backend lives. Override at build time with VITE_API_BASE if you deploy the
  *  API somewhere other than localhost:3001 (see .env.example). */
@@ -91,11 +91,9 @@ export async function register(
   return request("POST", "/api/auth/register", { name, email, password, confirmPassword, role });
 }
 
-/** `role` is the account type the person picked on the login screen. The backend re-checks
- *  it against the role actually stored for that account and rejects the login outright if
- *  they don't match — the frontend selection is never trusted on its own. */
-export async function login(email: string, password: string, role: UserRole): Promise<AuthUser> {
-  const data = await request<{ token: string; user: AuthUser }>("POST", "/api/auth/login", { email, password, role });
+/** The backend authenticates the account and returns its stored role for role-based access. */
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const data = await request<{ token: string; user: AuthUser }>("POST", "/api/auth/login", { email, password });
   setToken(data.token);
   return data.user;
 }
@@ -169,6 +167,10 @@ export async function getProfileHistory(): Promise<VerificationHistoryEntry[]> {
   const data = await request<{ profile: AuthUser; history: VerificationHistoryEntry[] }>("GET", "/api/profile");
   return data.history;
 }
+export async function requestProfileEdit(remarks: string): Promise<AuthUser> {
+  const data = await request<{ profile: AuthUser }>("POST", "/api/profile/edit-request", { remarks });
+  return data.profile;
+}
 
 /* ================= EMPLOYER ================= */
 export async function getEmployerProfile(): Promise<{ profile: AuthUser; history: VerificationHistoryEntry[] }> {
@@ -229,6 +231,19 @@ export async function getEmployerApplicantProfile(applicationId: number): Promis
 }
 
 /* ================= STAFF ================= */
+export async function staffGetProfileEditRequests(): Promise<AuthUser[]> {
+  const data = await request<{ requests: AuthUser[] }>("GET", "/api/staff/profile-edit-requests");
+  return data.requests;
+}
+export async function staffDecideProfileEditRequest(email: string, approve: boolean, remarks = ""): Promise<AuthUser> {
+  const decision = approve ? "approve" : "decline";
+  const data = await request<{ profile: AuthUser }>(
+    "POST",
+    `/api/staff/profile-edit-requests/${encodeURIComponent(email)}/${decision}`,
+    { remarks },
+  );
+  return data.profile;
+}
 export async function staffGetSeekers(status?: string): Promise<(AuthUser & { documentCount: number })[]> {
   const data = await request<{ seekers: (AuthUser & { documentCount: number })[] }>("GET", `/api/staff/seekers${status ? `?status=${status}` : ""}`);
   return data.seekers;

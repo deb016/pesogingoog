@@ -1,7 +1,7 @@
 import "./style.css";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import type { ActivityLogEntry, Application, ApplicationStatus, AppNotification, AuthUser, DocumentMeta, EducationLevel, StaffReferral, UserRole, Vacancy, VerificationHistoryEntry } from "./types";
+import type { ActivityLogEntry, Application, ApplicationStatus, AppNotification, AuthUser, DocumentMeta, EducationLevel, StaffReferral, Vacancy, VerificationHistoryEntry } from "./types";
 import { OTHER_SKILLS_LIST, DISABILITY_TYPES, SELF_EMPLOYED_SUBTYPES, JOBSEEKER_CATEGORIES, LANGUAGES, LANGUAGE_SKILLS, REFERRED_TO_OPTIONS } from "./data";
 import type { WorkExperienceEntry, TrainingEntry, EligibilityEntry, LicenseEntry } from "./types";
 import { computeMatchScore, matchTier } from "./matching";
@@ -219,6 +219,95 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   return el as T;
 };
 
+type AppDialogOptions = {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  inputLabel?: string;
+  inputPlaceholder?: string;
+  inputRequired?: boolean;
+  danger?: boolean;
+};
+
+let appDialogResolver: ((result: { confirmed: boolean; value: string }) => void) | null = null;
+let appDialogInputRequired = false;
+
+function showAppDialog(options: AppDialogOptions): Promise<{ confirmed: boolean; value: string }> {
+  if (appDialogResolver) resolveAppDialog(false);
+  $("appDialogTitle").textContent = options.title;
+  $("appDialogMessage").textContent = options.message;
+  const inputWrap = $("appDialogInputWrap");
+  const input = $("appDialogInput") as HTMLTextAreaElement;
+  const inputLabel = $("appDialogInputLabel");
+  const inputError = $("appDialogInputError");
+  inputWrap.classList.toggle("hidden", !options.inputLabel);
+  inputLabel.textContent = options.inputLabel
+    ? `${options.inputLabel} (${options.inputRequired ? "required" : "optional"})`
+    : "";
+  appDialogInputRequired = !!options.inputRequired;
+  input.setAttribute("aria-required", String(appDialogInputRequired));
+  input.maxLength = options.inputRequired ? 2000 : 1000;
+  input.rows = options.inputRequired ? 4 : 3;
+  input.placeholder = options.inputPlaceholder || "";
+  input.value = "";
+  inputError.textContent = "";
+  inputError.classList.add("hidden");
+  const confirmButton = $("appDialogConfirm") as HTMLButtonElement;
+  confirmButton.textContent = options.confirmLabel || "Confirm";
+  confirmButton.classList.toggle("app-dialog-danger", !!options.danger);
+  $("appDialogIcon").style.cssText = options.danger
+    ? "background:#FBE3E1;color:#9B2C22"
+    : "background:#FCEFD9;color:#8A5A0F";
+
+  $("appDialogOverlay").classList.remove("hidden");
+  return new Promise((resolve) => {
+    appDialogResolver = resolve;
+    if (options.inputLabel) input.focus();
+    else confirmButton.focus();
+  });
+}
+
+function resolveAppDialog(confirmed: boolean) {
+  if (!appDialogResolver) return;
+  const input = $("appDialogInput") as HTMLTextAreaElement;
+  const value = input.value.trim();
+  if (confirmed && appDialogInputRequired && !value) {
+    const error = $("appDialogInputError");
+    error.textContent = "Please enter a reason to continue.";
+    error.classList.remove("hidden");
+    input.focus();
+    return;
+  }
+  const resolve = appDialogResolver;
+  appDialogResolver = null;
+  appDialogInputRequired = false;
+  $("appDialogOverlay").classList.add("hidden");
+  resolve({ confirmed, value });
+}
+
+async function appConfirm(message: string, options: Partial<AppDialogOptions> = {}): Promise<boolean> {
+  const result = await showAppDialog({
+    title: options.title || "Please confirm",
+    message,
+    confirmLabel: options.confirmLabel || "Continue",
+    danger: options.danger,
+  });
+  return result.confirmed;
+}
+
+async function appPrompt(message: string, options: Partial<AppDialogOptions> = {}): Promise<string | null> {
+  const result = await showAppDialog({
+    title: options.title || "Add a note",
+    message,
+    confirmLabel: options.confirmLabel || "Submit",
+    inputLabel: options.inputLabel || "Reason",
+    inputPlaceholder: options.inputPlaceholder || "",
+    inputRequired: options.inputRequired,
+    danger: options.danger,
+  });
+  return result.confirmed ? result.value : null;
+}
+
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
@@ -282,7 +371,6 @@ function navInner(view: string) {
       showToast(errMsg(err, "Could not refresh the job listings."));
     });
   }
-  if (view === "login") renderLoginRoleSelector();
   if (view === "register") renderRegisterRoleSelector();
   if (view === "dashboard") dashTabInner(currentDashTab);
   renderNavAuth();
@@ -373,49 +461,8 @@ function renderNavAuth() {
 }
 
 /* ================= AUTH ================= */
-let selectedLoginRole: UserRole = "job_seeker";
 let selectedRegisterRole: "job_seeker" | "employer" = "job_seeker";
 let pendingRegistrationExpiresAt = "";
-const LOGIN_ROLE_OPTIONS: { key: UserRole; label: string }[] = [
-  { key: "job_seeker", label: "Job Seeker" },
-  { key: "employer", label: "Employer" },
-  { key: "staff", label: "Staff" },
-  { key: "admin", label: "Admin" },
-];
-
-function renderLoginRoleSelector() {
-  $("loginRoleSelector").innerHTML = LOGIN_ROLE_OPTIONS.map(
-    (o) => `
-    <button type="button" onclick="selectLoginRole('${o.key}')" class="px-3 py-2 rounded-lg border text-center" style="${
-      o.key === selectedLoginRole ? "background:var(--color-primary); color:#fff; border-color:var(--color-primary)" : "border-color:var(--color-border)"
-    }">${o.label}</button>`,
-  ).join("");
-  syncLoginEmailFieldForRole();
-}
-function selectLoginRole(role: string) {
-  if (role !== selectedLoginRole) {
-    const emailInput = document.getElementById("loginEmail") as HTMLInputElement | null;
-    const passwordInput = document.getElementById("loginPassword") as HTMLInputElement | null;
-    if (emailInput) emailInput.value = "";
-    if (passwordInput) {
-      passwordInput.value = "";
-      hidePasswordVisibility("loginPassword");
-    }
-  }
-  selectedLoginRole = role as UserRole;
-  renderLoginRoleSelector();
-}
-// Staff/Admin accounts are provisioned internally with a short username (e.g.
-// "admin"), not necessarily a real email address, so the field adapts per role.
-// Called whenever the role selector is (re-)rendered, so it's always in sync
-// whether this is a fresh page load, a role switch, or returning to this view.
-function syncLoginEmailFieldForRole() {
-  const isInternal = selectedLoginRole === "staff" || selectedLoginRole === "admin";
-  const label = document.getElementById("loginEmailLabel");
-  if (label) label.textContent = isInternal ? "Username" : "Email";
-  const input = document.getElementById("loginEmail") as HTMLInputElement | null;
-  if (input) input.placeholder = isInternal ? "username" : "you@example.com";
-}
 
 function registrationExpiryTimerHtml(expiresAt: string | undefined): string {
   const timestamp = expiresAt ? Date.parse(expiresAt) : NaN;
@@ -495,13 +542,19 @@ function applyDefaultProfileFields(u: AuthUser): AuthUser {
 /** Section 5: Gmail-only requirement, checked on the frontend too (never rely only on
  *  the backend — but the backend re-validates regardless, see server.js). */
 const GMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/i;
+const STRONG_PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
+const PASSWORD_REQUIREMENTS_MESSAGE = "Password must be at least 6 characters and include at least one letter and one number.";
+
+function isStrongPassword(password: string): boolean {
+  return STRONG_PASSWORD_REGEX.test(password);
+}
 
 async function doLogin(e: Event): Promise<boolean> {
   e.preventDefault();
   const email = $<HTMLInputElement>("loginEmail").value.trim().toLowerCase();
   const password = $<HTMLInputElement>("loginPassword").value;
   try {
-    currentUser = await api.login(email, password, selectedLoginRole);
+    currentUser = await api.login(email, password);
     await loadUserData();
     showToast(`Welcome back, ${currentUser.name?.split(" ")[0] ?? "there"}!`);
     // Always land on the dashboard Overview after logging in — never jump straight
@@ -533,6 +586,10 @@ async function doRegister(e: Event): Promise<boolean> {
 
   if (!GMAIL_REGEX.test(email)) {
     showToast("Please use a valid Gmail address (@gmail.com).");
+    return false;
+  }
+  if (!isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
     return false;
   }
   if (password !== confirmPassword) {
@@ -605,6 +662,10 @@ async function doResetPassword(e: Event): Promise<boolean> {
   const confirmPassword = $<HTMLInputElement>("resetConfirmPassword").value;
   if (!pendingResetToken) {
     showToast("This reset link is missing its token. Please use the link from your email again.");
+    return false;
+  }
+  if (!isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
     return false;
   }
   if (password !== confirmPassword) {
@@ -687,7 +748,8 @@ function passwordFieldHtml(
 ): string {
   return `
     <label for="${id}" class="text-xs font-semibold block mb-1.5">${labelText}</label>
-    ${passwordInputHtml(id, opts)}`;
+    ${passwordInputHtml(id, opts)}
+    <p class="text-xs mt-1" style="color:var(--color-muted)">${PASSWORD_REQUIREMENTS_MESSAGE}</p>`;
 }
 /** Just the input+toggle wrapper, for the few spots where the label markup
  * doesn't follow the standard pattern above. */
@@ -697,7 +759,7 @@ function passwordInputHtml(
 ): string {
   return `
     <div class="relative">
-      <input id="${id}" type="password" ${opts.required ? "required" : ""} ${opts.minlength ? `minlength="${opts.minlength}"` : ""} ${
+      <input id="${id}" type="password" ${opts.required ? "required" : ""} ${opts.minlength ? `minlength="${opts.minlength}"` : ""} pattern="(?=.*[A-Za-z])(?=.*[0-9]).{6,}" title="${PASSWORD_REQUIREMENTS_MESSAGE}" ${
         opts.autocomplete ? `autocomplete="${opts.autocomplete}"` : ""
       } ${opts.placeholder ? `placeholder="${opts.placeholder}"` : ""} class="w-full border rounded-lg pl-3 pr-10 py-2.5 text-sm" style="border-color:var(--color-border)" />
       <button type="button" onpointerdown="showPasswordVisibility('${id}')" onpointerup="hidePasswordVisibility('${id}')" onpointerleave="hidePasswordVisibility('${id}')" onpointercancel="hidePasswordVisibility('${id}')" onblur="hidePasswordVisibility('${id}')" onkeydown="if(event.key === ' ' || event.key === 'Enter') showPasswordVisibility('${id}')" onkeyup="if(event.key === ' ' || event.key === 'Enter') hidePasswordVisibility('${id}')" aria-label="Hold to show password" id="${id}-toggle" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-black/5">
@@ -932,7 +994,7 @@ function jobsGoToPage(page: number) {
 function renderJobsList() {
   const search = ($<HTMLInputElement>("jobSearchInput")?.value || (document.getElementById("heroSearch") as HTMLInputElement | null)?.value || "").toLowerCase();
   const cat = $<HTMLSelectElement>("jobCategoryFilter")?.value || "";
-  const sortOrder = $<HTMLSelectElement>("jobSortOrder")?.value || "title";
+  const sortOrder = $<HTMLSelectElement>("jobSortOrder")?.value || "match";
   const heroSearch = document.getElementById("heroSearch") as HTMLInputElement | null;
   const jobSearchInput = document.getElementById("jobSearchInput") as HTMLInputElement | null;
   if (jobSearchInput && heroSearch && heroSearch.value) {
@@ -947,12 +1009,24 @@ function renderJobsList() {
 
   const canMatch = isVerifiedSeeker(currentUser) && isProfileComplete(currentUser);
   if (canMatch && sortOrder === "match") {
-    filtered = [...filtered].sort((a, b) => computeMatchScore(currentUser, b).totalScore - computeMatchScore(currentUser, a).totalScore);
+    const titleCollator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+    filtered = [...filtered].sort((a, b) => {
+      const scoreA = computeMatchScore(currentUser, a).totalScore;
+      const scoreB = computeMatchScore(currentUser, b).totalScore;
+      const isMatchA = scoreA >= MATCH_DISPLAY_THRESHOLD;
+      const isMatchB = scoreB >= MATCH_DISPLAY_THRESHOLD;
+      if (isMatchA !== isMatchB) return isMatchA ? -1 : 1;
+      if (isMatchA && scoreA !== scoreB) return scoreB - scoreA;
+      return titleCollator.compare(a.title || "", b.title || "");
+    });
   } else {
     const titleCollator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
     filtered = [...filtered].sort((a, b) => titleCollator.compare(a.title || "", b.title || ""));
   }
 
+  const strongMatchCount = canMatch && sortOrder === "match"
+    ? filtered.filter((vacancy) => computeMatchScore(currentUser, vacancy).totalScore >= MATCH_DISPLAY_THRESHOLD).length
+    : 0;
   const totalPages = Math.max(1, Math.ceil(filtered.length / JOBS_PAGE_SIZE));
   if (currentJobsPage > totalPages) currentJobsPage = totalPages;
   if (currentJobsPage < 1) currentJobsPage = 1;
@@ -960,7 +1034,7 @@ function renderJobsList() {
   const pageItems = filtered.slice(start, start + JOBS_PAGE_SIZE);
 
   $("jobsCountLabel").textContent = filtered.length
-    ? `${filtered.length} vacanc${filtered.length === 1 ? "y" : "ies"} found${canMatch && sortOrder === "match" ? " · sorted by best match" : " · sorted by job title"} · page ${currentJobsPage} of ${totalPages}`
+    ? `${filtered.length} vacanc${filtered.length === 1 ? "y" : "ies"} found${canMatch && sortOrder === "match" ? ` · ${strongMatchCount} strong match${strongMatchCount === 1 ? "" : "es"} first, then A–Z` : " · sorted by job title"} · page ${currentJobsPage} of ${totalPages}`
     : "";
   $("jobsListGrid").innerHTML = pageItems.map(jobCard).join("") || `<p class="text-sm" style="color:var(--color-muted)">No vacancies match your search.</p>`;
   $("jobsPagination").innerHTML = jobsPaginationHtml(currentJobsPage, totalPages);
@@ -1181,7 +1255,11 @@ async function applyToJob(id: number, keepDetailsOpen = false, stayOnApplication
 }
 
 async function cancelStaffReferralAction(referralId: number) {
-  if (!window.confirm("Cancel this PESO job referral? It will be removed from Staff Referrals.")) return;
+  if (!await appConfirm("This PESO job referral will be removed from your Staff Referrals list.", {
+    title: "Cancel this referral?",
+    confirmLabel: "Cancel referral",
+    danger: true,
+  })) return;
   try {
     await api.cancelStaffReferral(referralId);
     pendingStaffReferrals = pendingStaffReferrals.filter((referral) => referral.id !== referralId);
@@ -1238,6 +1316,7 @@ function tabsForRole(role: string): { key: string; label: string }[] {
   if (role === "staff") {
     return [
       { key: "overview", label: "Overview" },
+      { key: "editRequests", label: "Profile Edit Requests" },
       { key: "seekers", label: "Job Seeker Verification" },
       { key: "employers", label: "Employer Verification" },
       { key: "vacancies", label: "Vacancy Approvals" },
@@ -1248,6 +1327,7 @@ function tabsForRole(role: string): { key: string; label: string }[] {
   if (role === "admin") {
     return [
       { key: "overview", label: "Overview" },
+      { key: "editRequests", label: "Profile Edit Requests" },
       { key: "seekers", label: "Job Seekers" },
       { key: "employers", label: "Employers" },
       { key: "vacancyInventory", label: "Vacancy Inventory" },
@@ -2033,8 +2113,8 @@ function verificationStatusDescription(u: AuthUser): string {
       return `Staff Remarks: ${u.verificationRemarks || "Please review and complete the missing information."}`;
     case "verified":
       return isEmployer
-        ? "Your employer profile has been verified. You can now post job vacancies for PESO approval."
-        : "Your profile has been verified. Job matching and applications are now available.";
+        ? "Your employer profile has been verified. You can post job vacancies; request Staff permission to edit this profile."
+        : "Your profile has been verified. Job matching and applications are available; request Staff permission to edit this profile.";
     case "rejected":
       return `Your profile was not approved by PESO Staff.${u.verificationRemarks ? ` Remarks: ${u.verificationRemarks}` : ""}`;
     default:
@@ -2044,6 +2124,13 @@ function verificationStatusDescription(u: AuthUser): string {
 
 function verificationStatusCardHtml(u: AuthUser): string {
   const meta = VERIFICATION_STATUS_META[u.verificationStatus] || VERIFICATION_STATUS_META.draft;
+  const isCurrentUser = currentUser?.email === u.email;
+  const editRequestState = isCurrentUser && ["verified", "rejected"].includes(u.verificationStatus)
+    ? u.profileEditRequestStatus === "pending"
+      ? `<p class="text-xs mt-3 rounded-lg px-3 py-2" style="background:#FCEFD9;color:#8A5A0F">Your request to edit this profile is waiting for PESO Staff review.</p>`
+      : `${u.profileEditRequestStatus === "declined" ? `<p class="text-xs mt-3" style="color:var(--color-muted)">Your previous edit request was declined.${u.profileEditRequestRemarks ? ` Request note: ${escapeReportHtml(u.profileEditRequestRemarks)}` : ""} You may submit another request.</p>` : ""}
+        <button onclick="requestProfileEditAction()" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg mt-3">Request another editing attempt</button>`
+    : "";
   return `
     <div class="card rounded-xl p-5 mb-6">
       <p class="text-[11px] font-semibold uppercase tracking-wide mb-2" style="color:var(--color-muted)">Profile Verification</p>
@@ -2063,7 +2150,46 @@ function verificationStatusCardHtml(u: AuthUser): string {
           ? `<button onclick="dashTab('profile')" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg mt-3">Go to Establishment Profile &rarr;</button>`
           : ""
       }
+      ${editRequestState}
     </div>`;
+}
+
+async function requestProfileEditAction() {
+  if (!currentUser) return;
+  const remarks = document.getElementById("profileEditRequestRemarks") as HTMLTextAreaElement | null;
+  if (!remarks) return;
+  remarks.value = "";
+  $("profileEditRequestError").textContent = "";
+  $("profileEditRequestError").classList.add("hidden");
+  $("profileEditRequestOverlay").classList.remove("hidden");
+  remarks.focus();
+}
+
+function closeProfileEditRequestModal() {
+  $("profileEditRequestOverlay").classList.add("hidden");
+}
+
+async function submitProfileEditRequest() {
+  if (!currentUser) return;
+  const remarks = (document.getElementById("profileEditRequestRemarks") as HTMLTextAreaElement | null)?.value.trim() ?? "";
+  const submitButton = $("profileEditRequestSubmit") as HTMLButtonElement;
+  const error = $("profileEditRequestError");
+  submitButton.disabled = true;
+  submitButton.textContent = "Sending...";
+  error.textContent = "";
+  error.classList.add("hidden");
+  try {
+    currentUser = await api.requestProfileEdit(remarks);
+    closeProfileEditRequestModal();
+    showToast("Your request was sent to PESO Staff.");
+    dashTabInner(currentDashTab);
+  } catch (err) {
+    error.textContent = errMsg(err, "Could not submit your edit request.");
+    error.classList.remove("hidden");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Send request";
+  }
 }
 
 function historyTimelineHtml(history: VerificationHistoryEntry[]): string {
@@ -2846,7 +2972,11 @@ async function submitDraftVacancy(id: number) {
   }
 }
 async function closeVacancyAction(id: number) {
-  if (!window.confirm("Close this vacancy? It will no longer be visible to Job Seekers.")) return;
+  if (!await appConfirm("This vacancy will no longer be visible to Job Seekers.", {
+    title: "Close this vacancy?",
+    confirmLabel: "Close vacancy",
+    danger: true,
+  })) return;
   try {
     await api.closeEmployerVacancy(id);
     showToast("Vacancy closed.");
@@ -3091,7 +3221,7 @@ async function renderEmployerDash(tab: string) {
   }
 
   if (tab === "profile") {
-    if (!["draft", "returned_for_completion", "verified"].includes(u.verificationStatus)) {
+    if (!["draft", "returned_for_completion"].includes(u.verificationStatus)) {
       content.innerHTML = `
         <h1 class="font-display text-2xl font-semibold mb-1">Establishment Profile</h1>
         ${verificationStatusCardHtml(u)}
@@ -3456,8 +3586,14 @@ function staffReturnSeekerAction(email: string) {
   openReturnCompletionModal({ type: "seeker", email });
 }
 async function staffRejectSeekerAction(email: string) {
-  const remarks = window.prompt("Reason for rejecting this profile (shown to the Job Seeker, optional):") ?? "";
-  if (!window.confirm("Reject this profile? This is a stronger action than Return for Completion.")) return;
+  const remarks = await appPrompt("Rejecting is a final decision for this review. The Job Seeker will be notified and can request another editing attempt later.", {
+    title: "Reject Job Seeker profile?",
+    confirmLabel: "Reject profile",
+    inputLabel: "Reason shown to the Job Seeker",
+    inputPlaceholder: "Explain why this profile is being rejected...",
+    danger: true,
+  });
+  if (remarks === null) return;
   try {
     await api.staffRejectSeeker(email, remarks.trim());
     showToast("Profile rejected.");
@@ -3479,8 +3615,14 @@ function staffReturnEmployerAction(email: string) {
   openReturnCompletionModal({ type: "employer", email });
 }
 async function staffRejectEmployerAction(email: string) {
-  const remarks = window.prompt("Reason for rejecting this employer (optional):") ?? "";
-  if (!window.confirm("Reject this employer profile?")) return;
+  const remarks = await appPrompt("The Employer will be notified and can request another editing attempt later.", {
+    title: "Reject Employer profile?",
+    confirmLabel: "Reject profile",
+    inputLabel: "Reason shown to the Employer",
+    inputPlaceholder: "Explain why this profile is being rejected...",
+    danger: true,
+  });
+  if (remarks === null) return;
   try {
     await api.staffRejectEmployer(email, remarks.trim());
     showToast("Employer profile rejected.");
@@ -3503,8 +3645,15 @@ function staffReturnVacancyAction(id: number) {
   openReturnCompletionModal({ type: "vacancy", id });
 }
 async function staffRejectVacancyAction(id: number) {
-  const remarks = window.prompt("Reason for rejecting this vacancy (shown to the employer):");
-  if (!remarks || !remarks.trim()) return;
+  const remarks = await appPrompt("The Employer will be notified of the decision. Include clear guidance so they understand the reason.", {
+    title: "Reject this vacancy?",
+    confirmLabel: "Reject vacancy",
+    inputLabel: "Reason shown to the Employer",
+    inputPlaceholder: "Explain why this vacancy is being rejected...",
+    inputRequired: true,
+    danger: true,
+  });
+  if (remarks === null) return;
   try {
     await api.staffRejectVacancy(id, remarks.trim());
     showToast("Vacancy rejected.");
@@ -3514,8 +3663,14 @@ async function staffRejectVacancyAction(id: number) {
   }
 }
 async function staffSuspendEmployerAction(email: string) {
-  const remarks = window.prompt("Reason for suspending this establishment (shown to the employer):") ?? "";
-  if (!window.confirm("Suspend this employer? They won't be able to post new vacancies until reactivated.")) return;
+  const remarks = await appPrompt("Suspending this establishment blocks the Employer from posting new vacancies until PESO Staff reactivates the account.", {
+    title: "Suspend this Employer?",
+    confirmLabel: "Suspend Employer",
+    inputLabel: "Reason shown to the Employer",
+    inputPlaceholder: "Explain the reason for suspension...",
+    danger: true,
+  });
+  if (remarks === null) return;
   try {
     await api.staffSuspendEmployer(email, remarks.trim());
     showToast("Employer suspended.");
@@ -4021,6 +4176,11 @@ async function renderStaffDash(tab: string) {
     return;
   }
 
+  if (tab === "editRequests") {
+    await renderProfileEditRequests(content);
+    return;
+  }
+
   if (tab === "seekers") {
     if (staffSeekerDetailEmail && staffSeekerDetail) {
       content.innerHTML = seekerDetailCardHtml(staffSeekerDetail);
@@ -4104,6 +4264,100 @@ async function renderStaffDash(tab: string) {
       <div class="space-y-3 stagger-grid">${staffApplicationsList.map(staffApplicationRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">No applications yet.</p>`}</div>
     `;
     return;
+  }
+}
+
+async function renderProfileEditRequests(content: HTMLElement) {
+  content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">Profile Edit Requests</h1><p class="text-sm mb-6" style="color:var(--color-muted)">Loading&hellip;</p>`;
+  let requests: AuthUser[];
+  try {
+    requests = await api.staffGetProfileEditRequests();
+  } catch (err) {
+    if (currentUser?.role === "staff" || currentUser?.role === "admin") {
+      content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">Profile Edit Requests</h1><p class="text-sm" style="color:#C0392B">${escapeReportHtml(errMsg(err, "Could not load edit requests."))}</p>`;
+    }
+    return;
+  }
+  if (!["staff", "admin"].includes(currentUser?.role || "") || currentDashTab !== "editRequests") return;
+  content.innerHTML = `
+    <h1 class="font-display text-2xl font-semibold mb-1">Profile Edit Requests</h1>
+    <p class="text-sm mb-6" style="color:var(--color-muted)">Approve a request to let the account update its profile and resubmit it for verification. Declining keeps the current verified or rejected profile unchanged.</p>
+    <div class="space-y-3 stagger-grid">
+      ${requests.map((request) => `
+        <article class="card rounded-xl p-5">
+          <div class="flex flex-wrap justify-between gap-3">
+            <div>
+              <h3 class="font-semibold">${escapeReportHtml(request.name || request.email)}</h3>
+              <p class="text-xs mt-1" style="color:var(--color-muted)">${escapeReportHtml(request.role === "employer" ? "Employer" : "Job Seeker")} &middot; ${escapeReportHtml(request.email)} &middot; Requested ${escapeReportHtml(request.profileEditRequestedAt || "recently")}</p>
+              <p class="text-sm mt-3">${escapeReportHtml(request.profileEditRequestRemarks || "No additional note was provided.")}</p>
+            </div>
+            <div class="flex items-start gap-2">
+              <button onclick="staffReviewProfileEditRequest('${encodeURIComponent(request.email)}', true)" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg">Approve</button>
+              <button onclick="staffReviewProfileEditRequest('${encodeURIComponent(request.email)}', false)" class="btn-outline text-xs font-semibold px-4 py-2 rounded-lg">Decline</button>
+            </div>
+          </div>
+        </article>`).join("") || `<p class="text-sm" style="color:var(--color-muted)">There are no pending profile edit requests.</p>`}
+    </div>
+  `;
+}
+
+let profileEditDecisionEmail: string | null = null;
+let profileEditDecisionApprove = true;
+
+function staffReviewProfileEditRequest(encodedEmail: string, approve: boolean) {
+  let email: string;
+  try {
+    email = decodeURIComponent(encodedEmail);
+  } catch {
+    showToast("Could not identify the profile edit request.");
+    return;
+  }
+  profileEditDecisionEmail = email;
+  profileEditDecisionApprove = approve;
+  const isApprove = approve;
+  $("profileEditDecisionTitle").textContent = isApprove ? "Approve edit request?" : "Decline edit request?";
+  $("profileEditDecisionDescription").textContent = isApprove
+    ? "Approving gives this user permission to update their profile and submit it again for verification."
+    : "The user's profile will remain locked and keep its current status. They can submit another edit request later.";
+  $("profileEditDecisionRemarksWrap").classList.toggle("hidden", isApprove);
+  const remarks = document.getElementById("profileEditDecisionRemarks") as HTMLTextAreaElement;
+  remarks.value = "";
+  remarks.placeholder = isApprove ? "" : "Add a brief explanation...";
+  $("profileEditDecisionError").textContent = "";
+  $("profileEditDecisionError").classList.add("hidden");
+  $("profileEditDecisionSubmit").textContent = isApprove ? "Approve request" : "Decline request";
+  $("profileEditDecisionOverlay").classList.remove("hidden");
+  if (!isApprove) remarks.focus();
+  else $("profileEditDecisionSubmit").focus();
+}
+
+function closeProfileEditDecisionModal() {
+  $("profileEditDecisionOverlay").classList.add("hidden");
+  profileEditDecisionEmail = null;
+}
+
+async function submitProfileEditDecision() {
+  if (!profileEditDecisionEmail) return;
+  const email = profileEditDecisionEmail;
+  const approve = profileEditDecisionApprove;
+  const remarks = (document.getElementById("profileEditDecisionRemarks") as HTMLTextAreaElement).value.trim();
+  const submitButton = $("profileEditDecisionSubmit") as HTMLButtonElement;
+  const error = $("profileEditDecisionError");
+  submitButton.disabled = true;
+  submitButton.textContent = approve ? "Approving..." : "Declining...";
+  error.textContent = "";
+  error.classList.add("hidden");
+  try {
+    await api.staffDecideProfileEditRequest(email, approve, remarks);
+    closeProfileEditDecisionModal();
+    showToast(approve ? "Edit request approved. The user can now update their profile." : "Edit request declined.");
+    await renderProfileEditRequests($("dashContent"));
+  } catch (err) {
+    error.textContent = errMsg(err, "Could not review this edit request.");
+    error.classList.remove("hidden");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = approve ? "Approve request" : "Decline request";
   }
 }
 
@@ -4477,7 +4731,11 @@ function adminBackFromEmployerDetail() {
 }
 
 async function adminDeleteSeekerAction(email: string) {
-  if (!window.confirm(`Permanently delete the job seeker account for ${email}? Their applications, documents, and account data will also be deleted.`)) return;
+  if (!await appConfirm(`The account for ${email}, including its applications, documents, and profile data, will be permanently deleted. This action cannot be undone.`, {
+    title: "Delete Job Seeker account?",
+    confirmLabel: "Delete account",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteSeeker(email);
     if (adminSeekerDetailEmail === email) {
@@ -4494,7 +4752,11 @@ async function adminDeleteSeekerAction(email: string) {
 }
 
 async function adminDeleteEmployerAction(email: string) {
-  if (!window.confirm(`Permanently delete the employer account for ${email}, all of its vacancies, and all applications to those vacancies?`)) return;
+  if (!await appConfirm(`The account for ${email}, all its vacancies, and applications for those vacancies will be permanently deleted. This action cannot be undone.`, {
+    title: "Delete Employer account?",
+    confirmLabel: "Delete account",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteEmployer(email);
     if (adminEmployerDetailEmail === email) {
@@ -4511,7 +4773,11 @@ async function adminDeleteEmployerAction(email: string) {
 async function adminDeleteVacancyAction(id: number) {
   const vacancy = adminInventoryVacancies.find((item) => item.id === id);
   const label = vacancy?.title || `vacancy #${id}`;
-  if (!window.confirm(`Permanently delete "${label}" and all applications for this vacancy?`)) return;
+  if (!await appConfirm(`"${label}" and all applications for this vacancy will be permanently deleted. This action cannot be undone.`, {
+    title: "Delete this vacancy?",
+    confirmLabel: "Delete vacancy",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteVacancy(id);
     closeVacancyDetailModal();
@@ -4523,7 +4789,11 @@ async function adminDeleteVacancyAction(id: number) {
 }
 
 async function adminDeleteApplicationAction(id: number) {
-  if (!window.confirm("Permanently delete this application and its status history?")) return;
+  if (!await appConfirm("This application and its status history will be permanently deleted. This action cannot be undone.", {
+    title: "Delete this application?",
+    confirmLabel: "Delete application",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteApplication(id);
     showToast("Application deleted.");
@@ -4722,6 +4992,10 @@ async function saveStaffEdit(email: string) {
     showToast("Name is required.");
     return;
   }
+  if (password && !isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
+    return;
+  }
   try {
     await api.adminUpdateStaff(email, name, password || undefined);
     showToast(password ? "Staff account updated — their sessions were signed out for security." : "Staff account updated.");
@@ -4732,7 +5006,11 @@ async function saveStaffEdit(email: string) {
   }
 }
 async function deleteStaffAccount(email: string) {
-  if (!window.confirm(`Delete the staff account for ${email}? This can't be undone.`)) return;
+  if (!await appConfirm(`The staff account for ${email} will be permanently deleted. This action cannot be undone.`, {
+    title: "Delete Staff account?",
+    confirmLabel: "Delete account",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteStaff(email);
     showToast("Staff account deleted.");
@@ -4747,6 +5025,10 @@ async function adminCreateStaffAccount(e: Event): Promise<boolean> {
   const name = $<HTMLInputElement>("asName").value;
   const email = $<HTMLInputElement>("asEmail").value;
   const password = $<HTMLInputElement>("asPassword").value;
+  if (!isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
+    return false;
+  }
   try {
     await api.adminCreateStaff(name, email, password);
     showToast("Staff account created.");
@@ -4774,6 +5056,10 @@ async function saveAdminEdit(email: string) {
     showToast("Name is required.");
     return;
   }
+  if (password && !isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
+    return;
+  }
   try {
     const { selfPasswordChanged } = await api.adminUpdateAdmin(email, name, password || undefined);
     editingAdminEmail = null;
@@ -4797,7 +5083,11 @@ async function saveAdminEdit(email: string) {
   }
 }
 async function deleteAdminAccount(email: string) {
-  if (!window.confirm(`Delete the admin account for ${email}? This can't be undone.`)) return;
+  if (!await appConfirm(`The Admin account for ${email} will be permanently deleted. This action cannot be undone.`, {
+    title: "Delete Admin account?",
+    confirmLabel: "Delete account",
+    danger: true,
+  })) return;
   try {
     await api.adminDeleteAdmin(email);
     showToast("Admin account deleted.");
@@ -4811,6 +5101,10 @@ async function adminCreateAdminAccount(e: Event): Promise<boolean> {
   const name = $<HTMLInputElement>("aaName").value;
   const email = $<HTMLInputElement>("aaEmail").value;
   const password = $<HTMLInputElement>("aaPassword").value;
+  if (!isStrongPassword(password)) {
+    showToast(PASSWORD_REQUIREMENTS_MESSAGE);
+    return false;
+  }
   try {
     await api.adminCreateAdmin(name, email, password);
     showToast("Admin account created.");
@@ -4833,7 +5127,11 @@ function activityLogRowHtml(a: ActivityLogEntry): string {
 }
 
 async function adminClearActivityLogAction() {
-  if (!window.confirm(`Clear the entire activity log (${adminActivityList.length} record${adminActivityList.length === 1 ? "" : "s"})? This can't be undone.`)) return;
+  if (!await appConfirm(`This will permanently remove all ${adminActivityList.length} activity log record${adminActivityList.length === 1 ? "" : "s"}. This action cannot be undone.`, {
+    title: "Clear activity log?",
+    confirmLabel: "Clear activity log",
+    danger: true,
+  })) return;
   try {
     await api.adminClearActivityLog();
     showToast("Activity log cleared.");
@@ -4897,6 +5195,11 @@ async function renderAdminDash(tab: string) {
         <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.filter((s) => s.verificationStatus === "verified").length + employers.filter((e) => e.verificationStatus === "verified").length}</div><div class="text-xs" style="color:var(--color-muted)">Verified Accounts</div></div>
       </div>
     `;
+    return;
+  }
+
+  if (tab === "editRequests") {
+    await renderProfileEditRequests(content);
     return;
   }
 
@@ -5086,6 +5389,7 @@ declare global {
     doLogin: typeof doLogin;
     doRegister: typeof doRegister;
     doLogout: typeof doLogout;
+    resolveAppDialog: typeof resolveAppDialog;
     closeLogoutConfirmModal: typeof closeLogoutConfirmModal;
     confirmLogout: typeof confirmLogout;
     closeHiredNotice: typeof closeHiredNotice;
@@ -5119,9 +5423,11 @@ declare global {
     handleDocUpload: typeof handleDocUpload;
     removeDoc: typeof removeDoc;
     toggleNoDocuments: typeof toggleNoDocuments;
-    selectLoginRole: typeof selectLoginRole;
     selectRegisterRole: typeof selectRegisterRole;
     doSubmitProfileForVerification: typeof doSubmitProfileForVerification;
+    requestProfileEditAction: typeof requestProfileEditAction;
+    closeProfileEditRequestModal: typeof closeProfileEditRequestModal;
+    submitProfileEditRequest: typeof submitProfileEditRequest;
     saveEmployerProfile: typeof saveEmployerProfile;
     doSubmitEmployerProfileForVerification: typeof doSubmitEmployerProfileForVerification;
     toggleNewVacancyForm: typeof toggleNewVacancyForm;
@@ -5147,6 +5453,9 @@ declare global {
     staffVerifyEmployerAction: typeof staffVerifyEmployerAction;
     staffReturnEmployerAction: typeof staffReturnEmployerAction;
     staffRejectEmployerAction: typeof staffRejectEmployerAction;
+    staffReviewProfileEditRequest: typeof staffReviewProfileEditRequest;
+    closeProfileEditDecisionModal: typeof closeProfileEditDecisionModal;
+    submitProfileEditDecision: typeof submitProfileEditDecision;
     staffApproveVacancyAction: typeof staffApproveVacancyAction;
     staffReturnVacancyAction: typeof staffReturnVacancyAction;
     staffRejectVacancyAction: typeof staffRejectVacancyAction;
@@ -5200,6 +5509,7 @@ window.hidePasswordVisibility = hidePasswordVisibility;
 window.doLogin = doLogin;
 window.doRegister = doRegister;
 window.doLogout = doLogout;
+window.resolveAppDialog = resolveAppDialog;
 window.closeLogoutConfirmModal = closeLogoutConfirmModal;
 window.confirmLogout = confirmLogout;
 window.closeHiredNotice = closeHiredNotice;
@@ -5236,9 +5546,11 @@ window.resolveUnsavedModal = resolveUnsavedModal;
 window.handleDocUpload = handleDocUpload;
 window.removeDoc = removeDoc;
 window.toggleNoDocuments = toggleNoDocuments;
-window.selectLoginRole = selectLoginRole;
 window.selectRegisterRole = selectRegisterRole;
 window.doSubmitProfileForVerification = doSubmitProfileForVerification;
+window.requestProfileEditAction = requestProfileEditAction;
+window.closeProfileEditRequestModal = closeProfileEditRequestModal;
+window.submitProfileEditRequest = submitProfileEditRequest;
 window.saveEmployerProfile = saveEmployerProfile;
 window.doSubmitEmployerProfileForVerification = doSubmitEmployerProfileForVerification;
 window.toggleNewVacancyForm = toggleNewVacancyForm;
@@ -5264,6 +5576,9 @@ window.staffRejectSeekerAction = staffRejectSeekerAction;
 window.staffVerifyEmployerAction = staffVerifyEmployerAction;
 window.staffReturnEmployerAction = staffReturnEmployerAction;
 window.staffRejectEmployerAction = staffRejectEmployerAction;
+window.staffReviewProfileEditRequest = staffReviewProfileEditRequest;
+window.closeProfileEditDecisionModal = closeProfileEditDecisionModal;
+window.submitProfileEditDecision = submitProfileEditDecision;
 window.staffApproveVacancyAction = staffApproveVacancyAction;
 window.staffReturnVacancyAction = staffReturnVacancyAction;
 window.staffRejectVacancyAction = staffRejectVacancyAction;

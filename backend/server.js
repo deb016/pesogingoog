@@ -28,7 +28,7 @@ const PDFDocument = require("pdfkit");
 })();
 
 const { db, hashPassword, verifyPassword, ready: dbReady } = require("./db");
-const { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail } = require("./mailer");
+const { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail, sendProfileReviewEmail } = require("./mailer");
 
 const PORT = process.env.PORT || 3001;
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -39,6 +39,8 @@ const MAX_AVATAR_BYTES = 1024 * 1024;
 const ROLES = ["job_seeker", "employer", "staff", "admin"];
 // Job Seekers and Employers must register with a Gmail address (Section 5).
 const GMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/i;
+const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
+const PASSWORD_REQUIREMENTS_MESSAGE = "Password must be at least 6 characters and include at least one letter and one number.";
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds, Section 7
 const UNVERIFIED_ACCOUNT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -48,6 +50,10 @@ const VACANCY_STATUSES = ["draft", "pending_approval", "approved", "returned_for
 const locationSearchCache = new Map();
 const locationReverseCache = new Map();
 let nominatimQueue = Promise.resolve();
+
+function isStrongPassword(password) {
+  return typeof password === "string" && PASSWORD_REGEX.test(password);
+}
 let lastNominatimRequestAt = 0;
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -178,8 +184,7 @@ async function getUserFromRequest(req) {
   return (await db.get("SELECT * FROM users WHERE email = ?", [session.email])) || null;
 }
 
-/** Enforces role-based access on the BACKEND, never trusting the frontend's selected
- * role alone (see the "Important Security Requirement" in the update spec / Rule 12).
+/** Enforces role-based access using the authenticated account's stored role.
  * Every protected route calls this (or requireAnyAuth) rather than reading
  * req.body.role or similar. */
 async function requireRole(req, res, roles) {
@@ -298,6 +303,9 @@ function serializeUser(row) {
     verificationReviewedBy: row.verification_reviewed_by || "",
     verificationAttempts: row.verification_attempts || 0,
     registrationExpiresAt: row.email_verified ? "" : row.registration_expires_at || "",
+    profileEditRequestStatus: row.profile_edit_request_status || "none",
+    profileEditRequestRemarks: row.profile_edit_request_remarks || "",
+    profileEditRequestedAt: row.profile_edit_requested_at || "",
 
     employerCompanyName: row.employer_company_name || "",
     employerBusinessPermit: row.employer_business_permit || "",
@@ -598,11 +606,6 @@ const REQUIRED_EMPLOYER_FIELDS = [
 function isEmployerProfileComplete(user) {
   return REQUIRED_EMPLOYER_FIELDS.every((f) => user[f] && String(user[f]).trim() !== "");
 }
-/** Fields that describe the establishment's legal/registered identity (Section 2 of
- * the Employer add-on spec: "changes to important establishment information such as
- * Business Name, TIN, and employer type should require PESO Staff verification"). */
-const SENSITIVE_EMPLOYER_FIELDS = ["employerBusinessName", "employerTin", "employerType", "employerCategory"];
-
 /** Vacancy Details / Posting Details (Section 6): auto-expire any APPROVED vacancy
  * whose Valid Until date has passed. Called by the periodic expiry task and before
  * serving vacancy lists so expired jobs are not left visible if a timer was delayed. */
@@ -718,8 +721,8 @@ route("POST", "/api/auth/register", async (req, res) => {
   if (!GMAIL_REGEX.test(email)) {
     return send(res, 400, { error: "Please use a valid Gmail address (@gmail.com)." });
   }
-  if (!password || password.length < 6) {
-    return send(res, 400, { error: "Password must be at least 6 characters." });
+  if (!isStrongPassword(password)) {
+    return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
   }
   if (confirmPassword !== undefined && confirmPassword !== password) {
     return send(res, 400, { error: "Password and confirmation do not match." });
@@ -773,15 +776,9 @@ route("POST", "/api/auth/login", async (req, res) => {
   const body = await readJsonBody(req);
   const email = (body.email || "").trim().toLowerCase();
   const password = body.password || "";
-  const requestedRole = body.role; // the role the person picked on the login screen
   const user = (await db.get("SELECT * FROM users WHERE email = ?", [email]));
   if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
     return send(res, 401, { error: "Incorrect email or password." });
-  }
-  // SECURITY: never trust the frontend's selected role alone — it must match the
-  // role actually stored for this account, or the login is rejected outright.
-  if (requestedRole && requestedRole !== user.role) {
-    return send(res, 403, { error: `This account is not registered as ${requestedRole.replace("_", " ")}. Please choose the correct account type.` });
   }
   // Section 6: Job Seekers/Employers must verify their Gmail before logging in.
   if (!user.email_verified) {
@@ -882,7 +879,7 @@ route("POST", "/api/auth/reset-password", async (req, res) => {
   const password = body.password || "";
   const confirmPassword = body.confirmPassword;
   if (!token) return send(res, 400, { error: "Missing reset token." });
-  if (!password || password.length < 6) return send(res, 400, { error: "Password must be at least 6 characters." });
+  if (!isStrongPassword(password)) return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
   if (confirmPassword !== undefined && confirmPassword !== password) {
     return send(res, 400, { error: "Password and confirmation do not match." });
   }
@@ -963,6 +960,48 @@ route("GET", "/api/profile", async (req, res) => {
   const user = await getUserFromRequest(req);
   if (!user) return send(res, 401, { error: "Not authenticated." });
   send(res, 200, { profile: serializeUser(user), history: await getVerificationHistory(user.email) });
+});
+
+route("POST", "/api/profile/edit-request", async (req, res) => {
+  const user = await requireRole(req, res, ["job_seeker", "employer"]);
+  if (!user) return;
+  if (!["verified", "rejected"].includes(user.verification_status)) {
+    return send(res, 409, { error: "You can request another editing attempt only after your profile is verified or rejected." });
+  }
+  if (user.profile_edit_request_status === "pending") {
+    return send(res, 409, { error: "Your request to edit this profile is already waiting for PESO Staff review." });
+  }
+
+  const body = await readJsonBody(req);
+  const remarks = typeof body.remarks === "string" ? body.remarks.trim() : "";
+  if (remarks.length > 1000) return send(res, 400, { error: "Your request note must be 1,000 characters or fewer." });
+
+  const requestedAt = nowIso();
+  const result = await db.run(`
+    UPDATE users SET profile_edit_request_status = 'pending', profile_edit_request_remarks = ?, profile_edit_requested_at = ?
+    WHERE email = ? AND verification_status IN ('verified', 'rejected') AND profile_edit_request_status != 'pending'
+  `, [remarks, requestedAt, user.email]);
+  if (!result.changes) {
+    return send(res, 409, { error: "Your request could not be submitted. Refresh the profile and try again." });
+  }
+  const updated = await db.get("SELECT * FROM users WHERE email = ?", [user.email]);
+  if (!updated || updated.profile_edit_request_status !== "pending" || updated.profile_edit_requested_at !== requestedAt) {
+    return send(res, 409, { error: "Your request could not be submitted. Refresh the profile and try again." });
+  }
+
+  await logVerification({
+    userEmail: user.email, userRole: user.role, previousStatus: user.verification_status,
+    newStatus: user.verification_status, action: "profile_edit_requested", remarks,
+    performedBy: user.email, performedByRole: user.role,
+  });
+  await logActivity({
+    userEmail: user.email, userRole: user.role, action: "profile_edit_requested",
+    relatedRecord: user.email, performedBy: user.email, performedByRole: user.role, remarks,
+  });
+  await notify(user.email, "Your request to edit your profile has been sent to PESO Staff for review.");
+  const staffAccounts = await db.all("SELECT email FROM users WHERE role IN ('staff', 'admin') AND email_verified = 1");
+  await Promise.all(staffAccounts.map((account) => notify(account.email, `${user.role === "employer" ? "Employer" : "Job Seeker"} ${user.name || user.email} requested permission to edit their profile.`)));
+  send(res, 200, { profile: serializeUser(updated) });
 });
 
 route("GET", "/api/profile/avatar", async (req, res) => {
@@ -1060,6 +1099,7 @@ route("POST", "/api/profile/submit", async (req, res) => {
   const wasReturned = user.verification_status === "returned_for_completion";
   (await db.run(`
     UPDATE users SET verification_status = 'pending_verification', verification_remarks = '',
+      profile_edit_request_status = 'none', profile_edit_request_remarks = '', profile_edit_requested_at = '',
       verification_submitted_at = ?, verification_attempts = verification_attempts + 1
     WHERE email = ?
   `, [nowIso(), user.email]));
@@ -1087,11 +1127,9 @@ route("GET", "/api/employer/profile", async (req, res) => {
 route("PUT", "/api/employer/profile", async (req, res) => {
   const user = await requireRole(req, res, ["employer"]);
   if (!user) return;
-  // Pending review / rejected / suspended: locked. Draft, Returned for Completion, and
-  // (per Section 2) Verified are all editable — editing a VERIFIED profile just doesn't
-  // require sensitive fields to change; if it does, we push it back for re-verification below.
-  if (!["draft", "returned_for_completion", "verified"].includes(user.verification_status)) {
-    return send(res, 423, { error: "Your employer profile is locked while it is pending review, rejected, or suspended. Contact PESO Staff for assistance." });
+  // Pending review, verified, rejected, and suspended profiles require Staff permission.
+  if (!["draft", "returned_for_completion"].includes(user.verification_status)) {
+    return send(res, 423, { error: "Your employer profile is locked while it is pending review, verified, rejected, or suspended. Request another editing attempt from PESO Staff to make changes." });
   }
   const b = await readJsonBody(req);
   const fields = {
@@ -1114,35 +1152,9 @@ route("PUT", "/api/employer/profile", async (req, res) => {
   };
   const name = b.employerBusinessName || user.name;
 
-  // Section 2: changes to Business Name / TIN / Employer Type / Category require PESO
-  // Staff to re-verify — a Verified establishment that edits any of these drops back
-  // to Pending Verification automatically. Non-sensitive edits (contact details, etc.)
-  // don't affect a Verified status.
-  const sensitiveChanged = user.verification_status === "verified" && SENSITIVE_EMPLOYER_FIELDS.some((f) => {
-    const col = { employerBusinessName: "employer_business_name", employerTin: "employer_tin", employerType: "employer_type", employerCategory: "employer_category" }[f];
-    const newVal = fields[col];
-    return newVal !== undefined && String(newVal || "") !== String(user[col] || "");
-  });
-
   const setClause = Object.keys(fields).map((k) => `${k} = ?`).join(", ");
   (await db.run(`UPDATE users SET ${setClause}, name = ? WHERE email = ?`, [...Object.values(fields).map((v) => (v === undefined ? "" : v)), name, user.email,]));
-
-  if (sensitiveChanged) {
-    (await db.run(`
-      UPDATE users SET verification_status = 'pending_verification', verification_remarks = '',
-        verification_submitted_at = ?, verification_attempts = verification_attempts + 1
-      WHERE email = ?
-    `, [nowIso(), user.email]));
-    await logVerification({
-      userEmail: user.email, userRole: "employer", previousStatus: "verified", newStatus: "pending_verification",
-      action: "resubmitted", remarks: "Employer updated sensitive establishment information (Business Name/TIN/Employer Type) — requires PESO Staff re-verification.",
-      performedBy: user.email, performedByRole: "employer",
-    });
-    await logActivity({ userEmail: user.email, userRole: "employer", action: "employer_profile_update_reverification", relatedRecord: user.email, performedBy: user.email, performedByRole: "employer" });
-    await notify(user.email, "You updated sensitive establishment information (Business Name, TIN, or Employer Type). Your establishment must be re-verified by PESO Staff before you can post new vacancies.");
-  } else {
-    await logActivity({ userEmail: user.email, userRole: "employer", action: "employer_profile_update", relatedRecord: user.email, performedBy: user.email, performedByRole: "employer" });
-  }
+  await logActivity({ userEmail: user.email, userRole: "employer", action: "employer_profile_update", relatedRecord: user.email, performedBy: user.email, performedByRole: "employer" });
 
   const updated = (await db.get("SELECT * FROM users WHERE email = ?", [user.email]));
   send(res, 200, { profile: serializeUser(updated) });
@@ -1160,6 +1172,7 @@ route("POST", "/api/employer/profile/submit", async (req, res) => {
   const wasReturned = user.verification_status === "returned_for_completion";
   (await db.run(`
     UPDATE users SET verification_status = 'pending_verification', verification_remarks = '',
+      profile_edit_request_status = 'none', profile_edit_request_remarks = '', profile_edit_requested_at = '',
       verification_submitted_at = ?, verification_attempts = verification_attempts + 1
     WHERE email = ?
   `, [nowIso(), user.email]));
@@ -1704,6 +1717,63 @@ route("GET", "/api/staff/seekers", async (req, res, params, url) => {
   });
 });
 
+route("GET", "/api/staff/profile-edit-requests", async (req, res) => {
+  if (!await requireStaffOrAdmin(req, res)) return;
+  const rows = await db.all(`
+    SELECT * FROM users
+    WHERE role IN ('job_seeker', 'employer') AND profile_edit_request_status = 'pending'
+    ORDER BY profile_edit_requested_at, LOWER(email)
+  `);
+  send(res, 200, { requests: rows.map(serializeUser) });
+});
+
+route("POST", "/api/staff/profile-edit-requests/:email/:decision", async (req, res, params) => {
+  const staffUser = await requireStaffOrAdmin(req, res);
+  if (!staffUser) return;
+  const email = decodeURIComponent(params.email).toLowerCase();
+  const decision = params.decision;
+  if (!["approve", "decline"].includes(decision)) return send(res, 400, { error: "Choose approve or decline." });
+
+  const row = await db.get("SELECT * FROM users WHERE email = ? AND role IN ('job_seeker', 'employer')", [email]);
+  if (!row) return send(res, 404, { error: "Profile edit request not found." });
+  if (row.profile_edit_request_status !== "pending" || !["verified", "rejected"].includes(row.verification_status)) {
+    return send(res, 409, { error: "This profile edit request is no longer pending." });
+  }
+  const body = await readJsonBody(req);
+  const staffRemarks = typeof body.remarks === "string" ? body.remarks.trim() : "";
+  const status = decision === "approve" ? "approved" : "declined";
+  const nextVerificationStatus = decision === "approve" ? "returned_for_completion" : row.verification_status;
+  const result = await db.run(`
+    UPDATE users SET profile_edit_request_status = ?, verification_status = ?,
+      verification_remarks = ?, verification_reviewed_at = ?, verification_reviewed_by = ?
+    WHERE email = ? AND profile_edit_request_status = 'pending' AND verification_status IN ('verified', 'rejected')
+  `, [
+    status,
+    nextVerificationStatus,
+    decision === "approve" ? "PESO Staff approved your request. You may now edit and resubmit your profile for verification." : (staffRemarks || "PESO Staff declined your request to edit this profile."),
+    nowIso(),
+    staffUser.email,
+    email,
+  ]);
+  if (!result.changes) return send(res, 409, { error: "This profile edit request has already been reviewed." });
+
+  const remarks = staffRemarks || (decision === "approve" ? "Profile edit request approved." : "Profile edit request declined.");
+  await logVerification({
+    userEmail: email, userRole: row.role, previousStatus: row.verification_status,
+    newStatus: nextVerificationStatus, action: `profile_edit_request_${status}`, remarks,
+    performedBy: staffUser.email, performedByRole: staffUser.role,
+  });
+  await logActivity({
+    userEmail: email, userRole: row.role, action: `profile_edit_request_${status}`,
+    relatedRecord: email, performedBy: staffUser.email, performedByRole: staffUser.role, remarks,
+  });
+  await notify(email, decision === "approve"
+    ? "PESO Staff approved your request. You can now edit your profile and submit it again for verification."
+    : `PESO Staff declined your request to edit your profile.${staffRemarks ? ` Remarks: ${staffRemarks}` : ""}`);
+  const updated = await db.get("SELECT * FROM users WHERE email = ?", [email]);
+  send(res, 200, { profile: serializeUser(updated) });
+});
+
 route("GET", "/api/staff/seekers/:email", async (req, res, params) => {
   if (!await requireStaffOrAdmin(req, res)) return;
   const email = decodeURIComponent(params.email).toLowerCase();
@@ -1740,6 +1810,13 @@ function verifyAccount(req, res, params, expectedRole) {
       ? "Your profile has been successfully verified by PESO Staff. You can now view job opportunities that match your qualifications and apply for available jobs."
       : "Your employer profile has been successfully verified by PESO Staff. You can now post job vacancies for PESO approval.");
     const updated = (await db.get("SELECT * FROM users WHERE email = ?", [email]));
+    const emailResult = await sendProfileReviewEmail({
+      to: email,
+      name: row.name || row.employer_business_name || row.employer_company_name,
+      role: expectedRole,
+      status: "verified",
+    });
+    if (!emailResult.sent) console.error(`Profile verification email could not be sent to ${email}.`);
     send(res, 200, { profile: serializeUser(updated) });
   })();
 }
@@ -1764,6 +1841,14 @@ function returnAccount(req, res, params, expectedRole) {
     await logActivity({ userEmail: email, userRole: expectedRole, action: "staff_returned_profile", relatedRecord: email, performedBy: staffUser.email, performedByRole: staffUser.role, remarks });
     await notify(email, `Your profile has been reviewed by PESO Staff. Please update the following and submit again for verification. Staff Remarks: ${remarks}`);
     const updated = (await db.get("SELECT * FROM users WHERE email = ?", [email]));
+    const emailResult = await sendProfileReviewEmail({
+      to: email,
+      name: row.name || row.employer_business_name || row.employer_company_name,
+      role: expectedRole,
+      status: "returned_for_completion",
+      remarks,
+    });
+    if (!emailResult.sent) console.error(`Profile completion email could not be sent to ${email}.`);
     send(res, 200, { profile: serializeUser(updated) });
   })();
 }
@@ -1787,6 +1872,14 @@ function rejectAccount(req, res, params, expectedRole) {
     await logActivity({ userEmail: email, userRole: expectedRole, action: "staff_rejected_profile", relatedRecord: email, performedBy: staffUser.email, performedByRole: staffUser.role, remarks });
     await notify(email, `Your profile was not approved by PESO Staff.${remarks ? ` Remarks: ${remarks}` : ""}`);
     const updated = (await db.get("SELECT * FROM users WHERE email = ?", [email]));
+    const emailResult = await sendProfileReviewEmail({
+      to: email,
+      name: row.name || row.employer_business_name || row.employer_company_name,
+      role: expectedRole,
+      status: "rejected",
+      remarks,
+    });
+    if (!emailResult.sent) console.error(`Profile rejection email could not be sent to ${email}.`);
     send(res, 200, { profile: serializeUser(updated) });
   })();
 }
@@ -2275,8 +2368,11 @@ route("POST", "/api/admin/staff", async (req, res) => {
   const email = (b.email || "").trim().toLowerCase();
   const password = b.password || "";
   const name = (b.name || "").trim();
-  if (!email || !password || password.length < 6 || !name) {
-    return send(res, 400, { error: "Name, email, and a password of at least 6 characters are required." });
+  if (!email || !name || !password) {
+    return send(res, 400, { error: "Name, email, and password are required." });
+  }
+  if (!isStrongPassword(password)) {
+    return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
   }
   const existing = (await db.get("SELECT email FROM users WHERE email = ?", [email]));
   if (existing) return send(res, 409, { error: "An account with that email already exists." });
@@ -2304,7 +2400,7 @@ route("PATCH", "/api/admin/staff/:email", async (req, res, params) => {
   const name = (b.name || "").trim();
   const password = b.password || "";
   if (!name) return send(res, 400, { error: "Name is required." });
-  if (password && password.length < 6) return send(res, 400, { error: "Password must be at least 6 characters." });
+  if (password && !isStrongPassword(password)) return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
 
   if (password) {
     const { hash, salt } = hashPassword(password);
@@ -2359,8 +2455,11 @@ route("POST", "/api/admin/admins", async (req, res) => {
   const email = (b.email || "").trim().toLowerCase();
   const password = b.password || "";
   const name = (b.name || "").trim();
-  if (!email || !password || password.length < 6 || !name) {
-    return send(res, 400, { error: "Name, username/email, and a password of at least 6 characters are required." });
+  if (!email || !name || !password) {
+    return send(res, 400, { error: "Name, username/email, and password are required." });
+  }
+  if (!isStrongPassword(password)) {
+    return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
   }
   const existing = (await db.get("SELECT email FROM users WHERE email = ?", [email]));
   if (existing) return send(res, 409, { error: "An account with that username/email already exists." });
@@ -2388,7 +2487,7 @@ route("PATCH", "/api/admin/admins/:email", async (req, res, params) => {
   const name = (b.name || "").trim();
   const password = b.password || "";
   if (!name) return send(res, 400, { error: "Name is required." });
-  if (password && password.length < 6) return send(res, 400, { error: "Password must be at least 6 characters." });
+  if (password && !isStrongPassword(password)) return send(res, 400, { error: PASSWORD_REQUIREMENTS_MESSAGE });
 
   const isSelf = email === admin.email;
   if (password) {

@@ -60,6 +60,11 @@ automatically deleted, along with associated uploaded files, seven days after
 registration. Resending the verification email does not extend this period;
 existing accounts are not included. The remaining time is shown on the email
 verification screen and beside eligible incomplete drafts in the Staff lists.
+PESO Staff verification, return-for-completion, and rejection decisions also
+send email notifications to the affected Job Seeker or Employer. Return and
+rejection emails include the Staff remarks when provided. These messages use
+the configured Brevo email service (`BREVO_API_KEY` and `BREVO_SENDER_EMAIL`);
+in-app notifications are still created if email delivery is unavailable.
 
 **Change the seeded admin password** before this goes anywhere near production
 — it's only there so you have something to log into immediately.
@@ -98,6 +103,10 @@ All request/response bodies are JSON. Authenticated routes require an
 | POST | `/api/auth/logout` | — | Invalidates the token |
 | GET | `/api/auth/me` | — | Returns `{ user }` for the current token |
 
+New passwords must be at least 6 characters and contain at least one letter and
+one number. This is enforced by the API for registration, password resets, and
+Staff/Admin account creation or password changes.
+
 ### Vacancies (public, no auth needed)
 
 | Method | Path | Notes |
@@ -118,6 +127,7 @@ page. OpenStreetMap attribution is displayed on the map.
 |---|---|---|
 | GET | `/api/profile` | — |
 | PUT | `/api/profile` | Full `JobSeeker`-shaped object (see `types.ts`) |
+| POST | `/api/profile/edit-request` | `{ remarks }` | Verified/rejected Job Seekers or Employers request Staff permission to edit |
 
 ### Applications
 
@@ -184,6 +194,13 @@ const toBase64 = (file) => new Promise((res) => {
 | GET | `/api/employer/applications` | Applications for the employer's own vacancies, with the seeker summary fields (name, contact, skills, education, experience) already used on the Applications tab |
 | GET | `/api/employer/applications/:id/seeker` | The applicant's full profile (education, skills, trainings, eligibilities, licenses, work experience, job preferences, documents-on-file list) — powers the "View Profile" button. 404s unless `:id` is an application for one of the requesting employer's own vacancies |
 | PATCH | `/api/employer/applications/:id` | `{ employerStatus, remarks? }` — moves the employer's own pipeline status and auto-notifies the seeker |
+
+### Profile edit requests
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| GET | `/api/staff/profile-edit-requests` | — | Pending requests for Job Seekers and Employers |
+| POST | `/api/staff/profile-edit-requests/:email/:decision` | `{ remarks? }` | Staff/Admin can `approve` or `decline`; approval returns the profile for completion so the user can edit and resubmit |
 
 ### Staff job referrals
 

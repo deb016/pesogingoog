@@ -1,5 +1,5 @@
 // mailer.js
-// Sends Gmail-verification and password-reset emails via Brevo's transactional
+// Sends account, profile-review, and staff follow-up emails via Brevo's transactional
 // email HTTP API (https://api.brevo.com/v3/smtp/email) using Node's built-in
 // fetch — no nodemailer, no SMTP socket connection. This matters if you deploy
 // this backend on Vercel: Vercel's serverless functions don't reliably support
@@ -147,6 +147,63 @@ async function sendStaffFollowUpEmail({ to, seekerName, message, vacancyTitle })
     });
 }
 
+async function sendProfileReviewEmail({ to, name, role, status, remarks }) {
+  const roleLabel = role === "employer" ? "Employer" : "Job Seeker";
+  const safeName = escapeHtml(name || roleLabel);
+  const safeRemarks = remarks ? escapeHtml(remarks).replace(/\r?\n/g, "<br>") : "";
+  const messages = {
+    verified: {
+      subject: "Your PESO Gingoog City profile has been verified",
+      heading: "Profile verified",
+      message: role === "employer"
+        ? "Your establishment profile has been verified. You can now post job vacancies for PESO approval."
+        : "Your profile has been verified. You can now view matching job opportunities and apply for available jobs.",
+    },
+    returned_for_completion: {
+      subject: "Action needed: update your PESO Gingoog City profile",
+      heading: "Profile returned for completion",
+      message: "PESO Staff reviewed your profile and returned it for updates. Please sign in, review the remarks below, update your profile, and submit it again for verification.",
+    },
+    rejected: {
+      subject: "Update about your PESO Gingoog City profile",
+      heading: "Profile not approved",
+      message: "PESO Staff did not approve your profile. Please contact the PESO office if you need assistance.",
+    },
+  };
+  const notification = messages[status];
+  if (!notification) throw new Error(`Unsupported profile review email status: ${status}`);
+
+  const remarksHtml = safeRemarks
+    ? `<div style="margin-top:20px;padding:14px;background:#f7f9fb;border-left:3px solid #1555a5"><strong>Remarks from PESO Staff</strong><p style="margin:8px 0 0;line-height:1.6">${safeRemarks}</p></div>`
+    : "";
+  const remarksText = remarks ? `\n\nRemarks from PESO Staff:\n${remarks}` : "";
+  const dashboardUrl = APP_BASE_URL;
+  return sendMail({
+    to,
+    subject: notification.subject,
+    text: `Hello ${name || roleLabel},\n\n${notification.message}${remarksText}\n\nSign in to your account: ${dashboardUrl}\n\nPESO Gingoog City`,
+    html: `
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:24px;background:#f2f5f7;color:#202833;font-family:Arial,Helvetica,sans-serif">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e7eb">
+            <tr><td style="padding:24px 28px;border-top:5px solid #1555a5">
+              <p style="margin:0 0 20px;color:#38516e;font-size:12px;font-weight:bold;letter-spacing:1px">PESO GINGOOG CITY</p>
+              <h1 style="margin:0 0 20px;color:#173f70;font-size:22px">${notification.heading}</h1>
+              <p style="margin:0 0 12px;font-size:15px;line-height:1.6">Hello ${safeName},</p>
+              <p style="margin:0;font-size:15px;line-height:1.7">${notification.message}</p>
+              ${remarksHtml}
+              <p style="margin:24px 0 0;font-size:14px"><a href="${escapeHtml(dashboardUrl)}" style="color:#1555a5">Sign in to your PESO account</a></p>
+            </td></tr>
+            <tr><td style="padding:16px 28px;background:#f7f9fb;border-top:1px solid #e7ebef;color:#697586;font-size:12px;line-height:1.5;text-align:center">
+              Public Employment Service Office - Gingoog City
+            </td></tr>
+          </table>
+        </body>
+      </html>`,
+  });
+}
+
 async function sendVerificationEmail(email, token) {
   const link = `${APP_BASE_URL}/?verify=${encodeURIComponent(token)}`;
   return sendMail({
@@ -179,4 +236,4 @@ async function sendPasswordResetEmail(email, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail };
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail, sendProfileReviewEmail };

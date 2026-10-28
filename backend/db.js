@@ -37,6 +37,7 @@ const TEXT_COLUMNS_WITH_LONG_VALUES = new Set([
   "skills",
   "no_documents_declared",
   "verification_remarks",
+  "profile_edit_request_remarks",
   "employer_description",
   "employer_suspension_reason",
   "remarks",
@@ -192,6 +193,9 @@ const CREATE_TABLE_STATEMENTS = [
     verification_reviewed_at  TEXT DEFAULT '',
     verification_reviewed_by  TEXT DEFAULT '',
     verification_attempts   INTEGER NOT NULL DEFAULT 0,
+    profile_edit_request_status TEXT NOT NULL DEFAULT 'none',
+    profile_edit_request_remarks TEXT DEFAULT '',
+    profile_edit_requested_at TEXT DEFAULT '',
 
     -- Employer profile fields (only used when role = 'employer')
     employer_company_name    TEXT DEFAULT '',
@@ -418,6 +422,9 @@ async function migrateUsersTable() {
     ["verification_reviewed_at", "TEXT DEFAULT ''"],
     ["verification_reviewed_by", "TEXT DEFAULT ''"],
     ["verification_attempts", "INTEGER NOT NULL DEFAULT 0"],
+    ["profile_edit_request_status", "TEXT NOT NULL DEFAULT 'none'"],
+    ["profile_edit_request_remarks", "TEXT DEFAULT ''"],
+    ["profile_edit_requested_at", "TEXT DEFAULT ''"],
     ["employer_company_name", "TEXT DEFAULT ''"],
     ["employer_business_permit", "TEXT DEFAULT ''"],
     ["employer_industry", "TEXT DEFAULT ''"],

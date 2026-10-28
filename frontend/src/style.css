@@ -752,3 +752,10 @@ button:focus {
 .modal-card-wide {
   max-width: 1200px;
 }
+.app-dialog-danger {
+  background: #A93226 !important;
+  color: #fff !important;
+}
+.app-dialog-danger:hover {
+  background: #87281F !important;
+}
