@@ -452,7 +452,7 @@ async function migrateUsersTable() {
   ];
   for (const [name, def] of wanted) {
     if (!existingCols.has(name)) {
-      await db.run(`ALTER TABLE users ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+      await db.run(`ALTER TABLE users ADD COLUMN ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
     }
   }
   await db.run(`UPDATE users SET role = 'admin' WHERE is_admin = 1 AND role != 'admin'`);
@@ -484,7 +484,7 @@ async function migrateVacanciesTable() {
   ];
   for (const [name, def] of wanted) {
     if (!existingCols.has(name)) {
-      await db.run(`ALTER TABLE vacancies ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+      await db.run(`ALTER TABLE vacancies ADD COLUMN ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
     }
   }
 }
@@ -500,7 +500,7 @@ async function migrateApplicationsTable() {
   ];
   for (const [name, def] of wanted) {
     if (!existingCols.has(name)) {
-      await db.run(`ALTER TABLE applications ADD COLUMN ${name} ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
+      await db.run(`ALTER TABLE applications ADD COLUMN ${mysqlCompatibleTextDefaults(`${name} ${def}`)}`);
     }
   }
 }
