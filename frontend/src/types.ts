@@ -239,6 +239,7 @@ export interface AuthUser extends JobSeeker {
   verificationReviewedAt: string;
   verificationReviewedBy: string;
   verificationAttempts: number;
+  registrationExpiresAt?: string;
 
   employerCompanyName: string;
   employerBusinessPermit: string;

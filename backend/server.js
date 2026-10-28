@@ -41,10 +41,12 @@ const ROLES = ["job_seeker", "employer", "staff", "admin"];
 const GMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@gmail\.com$/i;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const EMAIL_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds, Section 7
+const UNVERIFIED_ACCOUNT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour, Section 10
 const VERIFICATION_STATUSES = ["draft", "pending_verification", "returned_for_completion", "verified", "rejected", "suspended"];
 const VACANCY_STATUSES = ["draft", "pending_approval", "approved", "returned_for_completion", "rejected", "expired", "closed"];
 const locationSearchCache = new Map();
+const locationReverseCache = new Map();
 let nominatimQueue = Promise.resolve();
 let lastNominatimRequestAt = 0;
 
@@ -132,6 +134,28 @@ async function removeUserUploadDirectory(email) {
     await fs.promises.rm(userDirectory, { recursive: true, force: true });
   } catch (error) {
     console.error(`Could not remove uploaded files for deleted account ${email}:`, error);
+  }
+}
+async function sweepExpiredUnverifiedAccounts() {
+  const cutoff = nowIso();
+  const expiredUsers = await db.all(`
+    SELECT email FROM users
+    WHERE role IN ('job_seeker', 'employer')
+      AND email_verified = 0
+      AND registration_expires_at IS NOT NULL
+      AND registration_expires_at <= ?
+  `, [cutoff]);
+
+  for (const user of expiredUsers) {
+    const result = await db.run(`
+      DELETE FROM users
+      WHERE email = ?
+        AND role IN ('job_seeker', 'employer')
+        AND email_verified = 0
+        AND registration_expires_at IS NOT NULL
+        AND registration_expires_at <= ?
+    `, [user.email, cutoff]);
+    if (result.changes > 0) await removeUserUploadDirectory(user.email);
   }
 }
 
@@ -273,6 +297,7 @@ function serializeUser(row) {
     verificationReviewedAt: row.verification_reviewed_at || "",
     verificationReviewedBy: row.verification_reviewed_by || "",
     verificationAttempts: row.verification_attempts || 0,
+    registrationExpiresAt: row.email_verified ? "" : row.registration_expires_at || "",
 
     employerCompanyName: row.employer_company_name || "",
     employerBusinessPermit: row.employer_business_permit || "",
@@ -682,6 +707,8 @@ route("POST", "/api/auth/register", async (req, res) => {
   const password = body.password || "";
   const confirmPassword = body.confirmPassword;
   const name = (body.name || "").trim();
+  const createdAt = nowIso();
+  const registrationExpiresAt = new Date(Date.now() + UNVERIFIED_ACCOUNT_TTL_MS).toISOString();
   // Only job_seeker and employer accounts may self-register. Staff and Admin
   // accounts are provisioned by an Admin (see POST /api/admin/staff).
   const role = ["job_seeker", "employer"].includes(body.role) ? body.role : "job_seeker";
@@ -706,13 +733,23 @@ route("POST", "/api/auth/register", async (req, res) => {
   const verificationToken = crypto.randomBytes(32).toString("hex");
   const verificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS).toISOString();
 
-  (await db.run(`
-    INSERT INTO users (
-      email, password_hash, password_salt, name, role, created_at,
-      email_verified, email_verification_token, email_verification_expires, email_verification_last_sent
-    )
-    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-  `, [email, hash, salt, name, role, nowIso(), verificationToken, verificationExpires, nowIso()]));
+  try {
+    await db.run(`
+      INSERT INTO users (
+        email, password_hash, password_salt, name, role, created_at,
+        email_verified, email_verification_token, email_verification_expires, email_verification_last_sent,
+        registration_expires_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+    `, [email, hash, salt, name, role, createdAt, verificationToken, verificationExpires, createdAt, registrationExpiresAt]);
+  } catch (err) {
+    // The primary key is global across roles; this also handles simultaneous
+    // seeker/employer registration attempts that pass the pre-insert lookup.
+    if (err.code === "ER_DUP_ENTRY" || err.errno === 1062) {
+      return send(res, 409, { error: "This Gmail address is already registered. Please log in or use Forgot Password." });
+    }
+    throw err;
+  }
 
   await logActivity({ userEmail: email, userRole: role, action: "user_registration", relatedRecord: email, performedBy: email, performedByRole: role });
 
@@ -727,6 +764,7 @@ route("POST", "/api/auth/register", async (req, res) => {
   send(res, 201, {
     requiresVerification: true,
     email,
+    registrationExpiresAt,
     message: "Account created. Please check your Gmail inbox to verify your email address before logging in.",
   });
 });
@@ -751,6 +789,7 @@ route("POST", "/api/auth/login", async (req, res) => {
       error: "Please verify your Gmail address before logging in.",
       requiresVerification: true,
       email: user.email,
+      registrationExpiresAt: user.registration_expires_at || "",
     });
   }
   const token = await createSession(email);
@@ -770,7 +809,8 @@ route("POST", "/api/auth/verify-email", async (req, res) => {
   }
 
   (await db.run(`
-    UPDATE users SET email_verified = 1, email_verification_token = '', email_verification_expires = ''
+    UPDATE users SET email_verified = 1, email_verification_token = '', email_verification_expires = '',
+      registration_expires_at = NULL
     WHERE email = ?
   `, [user.email]));
   await logActivity({ userEmail: user.email, userRole: user.role, action: "email_verified", relatedRecord: user.email });
@@ -1189,6 +1229,58 @@ route("GET", "/api/employer/location-search", async (req, res, params, url) => {
   } catch (error) {
     console.error("Could not search OpenStreetMap locations:", error);
     send(res, 502, { error: "Location search is temporarily unavailable. Please try again." });
+  }
+});
+
+route("GET", "/api/employer/location-reverse", async (req, res, params, url) => {
+  if (!await requireRole(req, res, ["employer"])) return;
+  const latitude = Number(url.searchParams.get("lat"));
+  const longitude = Number(url.searchParams.get("lon"));
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return send(res, 400, { error: "Select a valid map location." });
+  }
+  const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+  if (locationReverseCache.has(cacheKey)) return send(res, 200, { location: locationReverseCache.get(cacheKey) });
+
+  const reverseSearch = nominatimQueue.then(async () => {
+    const delay = Math.max(0, 1000 - (Date.now() - lastNominatimRequestAt));
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    lastNominatimRequestAt = Date.now();
+    const reverseUrl = new URL("https://nominatim.openstreetmap.org/reverse");
+    reverseUrl.search = new URLSearchParams({
+      format: "jsonv2",
+      addressdetails: "1",
+      zoom: "18",
+      lat: String(latitude),
+      lon: String(longitude),
+    }).toString();
+    const response = await fetch(reverseUrl, {
+      headers: {
+        "User-Agent": "PESO-Gingoog-Employment-System/1.0",
+        "Accept-Language": "en",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`OpenStreetMap reverse search returned HTTP ${response.status}.`);
+    const result = await response.json();
+    if (!result.display_name?.toLocaleLowerCase().includes("gingo")) {
+      const error = new Error("Choose a map location within Gingoog City.");
+      error.statusCode = 422;
+      throw error;
+    }
+    return { label: result.display_name, latitude, longitude };
+  });
+  nominatimQueue = reverseSearch.then(() => undefined, () => undefined);
+  try {
+    const location = await reverseSearch;
+    if (locationReverseCache.size >= 500) locationReverseCache.delete(locationReverseCache.keys().next().value);
+    locationReverseCache.set(cacheKey, location);
+    send(res, 200, { location });
+  } catch (error) {
+    if (error.statusCode === 422) return send(res, 422, { error: error.message });
+    console.error("Could not reverse-search OpenStreetMap location:", error);
+    send(res, 502, { error: "Could not find an address for this map pin. Try another location." });
   }
 });
 
@@ -2447,9 +2539,15 @@ const server = http.createServer(async (req, res) => {
 dbReady.then(async () => {
   await migratePendingStaffReferrals();
   await sweepExpiredVacancies();
+  await sweepExpiredUnverifiedAccounts();
   setInterval(() => {
     sweepExpiredVacancies().catch((error) => {
       console.error("Automatic vacancy expiry sweep failed:", error);
+    });
+  }, 60_000);
+  setInterval(() => {
+    sweepExpiredUnverifiedAccounts().catch((error) => {
+      console.error("Automatic unverified-account expiry sweep failed:", error);
     });
   }, 60_000);
   server.listen(PORT, () => {

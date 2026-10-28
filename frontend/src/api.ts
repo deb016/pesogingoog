@@ -87,7 +87,7 @@ export async function register(
   password: string,
   confirmPassword: string,
   role: "job_seeker" | "employer" = "job_seeker",
-): Promise<{ requiresVerification: boolean; email: string; message: string }> {
+): Promise<{ requiresVerification: boolean; email: string; registrationExpiresAt: string; message: string }> {
   return request("POST", "/api/auth/register", { name, email, password, confirmPassword, role });
 }
 
@@ -189,6 +189,11 @@ export async function getEmployerVacancies(): Promise<Vacancy[]> {
 export async function searchEmployerLocations(query: string): Promise<LocationSearchResult[]> {
   const data = await request<{ locations: LocationSearchResult[] }>("GET", `/api/employer/location-search?q=${encodeURIComponent(query)}`);
   return data.locations;
+}
+export async function reverseSearchEmployerLocation(latitude: number, longitude: number): Promise<LocationSearchResult> {
+  const query = new URLSearchParams({ lat: String(latitude), lon: String(longitude) });
+  const data = await request<{ location: LocationSearchResult }>("GET", `/api/employer/location-reverse?${query}`);
+  return data.location;
 }
 export async function createEmployerVacancy(v: Partial<Vacancy> & { isDraft?: boolean }): Promise<Vacancy> {
   const data = await request<{ vacancy: Vacancy }>("POST", "/api/employer/vacancies", v);

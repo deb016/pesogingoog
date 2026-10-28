@@ -55,6 +55,11 @@ differs (e.g. you set a MySQL root password).
 Admin report PDFs use PDFKit. Employer location search uses the public
 OpenStreetMap Nominatim service through an authenticated backend route, with
 query caching and a one-request-per-second upstream limit; no API key is needed.
+New Job Seeker and Employer registrations that do not verify their email are
+automatically deleted, along with associated uploaded files, seven days after
+registration. Resending the verification email does not extend this period;
+existing accounts are not included. The remaining time is shown on the email
+verification screen and beside eligible incomplete drafts in the Staff lists.
 
 **Change the seeded admin password** before this goes anywhere near production
 — it's only there so you have something to log into immediately.

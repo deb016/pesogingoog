@@ -429,6 +429,9 @@ textarea:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
+.profile-missing-field {
+  box-shadow: 0 0 0 3px rgba(220, 20, 60, 0.18);
+}
 
 /* Keep dashboard tabs reachable on narrow touch screens without hiding sections. */
 #dashContent {

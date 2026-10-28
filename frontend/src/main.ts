@@ -320,6 +320,7 @@ function renderNavAuth() {
 /* ================= AUTH ================= */
 let selectedLoginRole: UserRole = "job_seeker";
 let selectedRegisterRole: "job_seeker" | "employer" = "job_seeker";
+let pendingRegistrationExpiresAt = "";
 const LOGIN_ROLE_OPTIONS: { key: UserRole; label: string }[] = [
   { key: "job_seeker", label: "Job Seeker" },
   { key: "employer", label: "Employer" },
@@ -359,6 +360,29 @@ function syncLoginEmailFieldForRole() {
   if (label) label.textContent = isInternal ? "Username" : "Email";
   const input = document.getElementById("loginEmail") as HTMLInputElement | null;
   if (input) input.placeholder = isInternal ? "username" : "you@example.com";
+}
+
+function registrationExpiryTimerHtml(expiresAt: string | undefined): string {
+  const timestamp = expiresAt ? Date.parse(expiresAt) : NaN;
+  if (!Number.isFinite(timestamp)) return "";
+  return `<p class="text-xs mt-2 font-semibold" style="color:#8A5A0F" role="timer" aria-live="polite" data-registration-expiry="${new Date(timestamp).toISOString()}"></p>`;
+}
+
+function updateRegistrationExpiryTimers(): void {
+  document.querySelectorAll<HTMLElement>("[data-registration-expiry]").forEach((timer) => {
+    const expiresAt = Date.parse(timer.dataset.registrationExpiry || "");
+    if (!Number.isFinite(expiresAt)) return;
+    const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+    if (remaining === 0) {
+      timer.textContent = "Draft expired — it is scheduled for automatic deletion.";
+      return;
+    }
+    const days = Math.floor(remaining / 86400);
+    const hours = Math.floor((remaining % 86400) / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
+    const seconds = remaining % 60;
+    timer.textContent = `Time left before automatic deletion: ${days}d ${hours}h ${minutes}m ${seconds}s`;
+  });
 }
 
 function renderRegisterRoleSelector() {
@@ -434,6 +458,9 @@ async function doLogin(e: Event): Promise<boolean> {
       showToast("Please verify your Gmail address before logging in.");
       $<HTMLInputElement>("resendEmail").value = err.data.email || email;
       $("verifyEmailMessage").textContent = "Your account hasn't been verified yet. Please check your Gmail inbox, or resend the verification email below.";
+      pendingRegistrationExpiresAt = err.data.registrationExpiresAt || "";
+      $("registrationExpiryNotice").innerHTML = registrationExpiryTimerHtml(pendingRegistrationExpiresAt);
+      updateRegistrationExpiryTimers();
       navInner("verify-email");
     } else {
       showToast(errMsg(err, "Login failed."));
@@ -463,6 +490,9 @@ async function doRegister(e: Event): Promise<boolean> {
     showToast(result.message || "Account created! Please check your Gmail to verify your account.");
     $<HTMLInputElement>("resendEmail").value = result.email || email;
     $("verifyEmailMessage").textContent = `We've sent a verification link to ${result.email || email}. Please open it to activate your account before logging in.`;
+    pendingRegistrationExpiresAt = result.registrationExpiresAt;
+    $("registrationExpiryNotice").innerHTML = registrationExpiryTimerHtml(pendingRegistrationExpiresAt);
+    updateRegistrationExpiryTimers();
     navInner("verify-email");
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
@@ -935,7 +965,7 @@ function openJob(id: number) {
           ${
             mapCoordinates
               ? `<div id="jobLocationMap-${job.id}" class="location-map rounded-lg border" style="height:300px;border-color:var(--color-border)"></div>
-                 <a href="https://www.openstreetmap.org/?mlat=${mapCoordinates[0]}&mlon=${mapCoordinates[1]}#map=16/${mapCoordinates[0]}/${mapCoordinates[1]}" target="_blank" rel="noreferrer" class="text-xs font-semibold mt-2 inline-block" style="color:var(--color-primary)">Open larger map</a>`
+                 <a href="https://www.google.com/maps/search/?api=1&query=${mapCoordinates[0]},${mapCoordinates[1]}" target="_blank" rel="noreferrer" class="text-xs font-semibold mt-2 inline-block" style="color:var(--color-primary)">Open larger map</a>`
               : `<p class="text-xs rounded-lg p-3" style="background:var(--color-bg);color:var(--color-muted)">The employer has not selected a map pin for this vacancy.</p>`
           }
         </div>
@@ -1035,6 +1065,19 @@ function profileCompletionStatus(u: AuthUser | null): { filled: number; total: n
   const missing = PROFILE_REQUIRED_FIELDS.filter((k) => !u[k] || String(u[k]).trim() === "").map((k) => PROFILE_REQUIRED_LABELS[k]);
   if (!documentsRequirementMet()) missing.push(DOCUMENTS_LABEL);
   return { filled: total - missing.length, total, missing };
+}
+
+function scrollToProfileField(fieldId: string): void {
+  requestAnimationFrame(() => {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (field instanceof HTMLElement) {
+      field.focus({ preventScroll: true });
+      field.classList.add("profile-missing-field");
+      window.setTimeout(() => field.classList.remove("profile-missing-field"), 1800);
+    }
+  });
 }
 
 async function applyToJob(id: number, keepDetailsOpen = false, stayOnApplications = false) {
@@ -1752,8 +1795,29 @@ async function persistProfileForm(): Promise<boolean> {
 async function saveProfile() {
   if (!currentUser) return;
   if (!(await persistProfileForm())) return;
-  showToast(isProfileComplete(currentUser) ? "Profile saved! You're now eligible to apply for jobs." : "Profile saved. Some required fields are still missing.");
+  const complete = isProfileComplete(currentUser);
+  showToast(complete ? "Profile saved! You're now eligible to apply for jobs." : "Profile saved. Some required fields are still missing; moving to the first one.");
   dashTabInner("profile");
+  if (!complete) {
+    const fieldIds: Partial<Record<keyof AuthUser, string>> = {
+      surname: "pSurname", firstName: "pFirstName", middleName: "pMiddleName", suffix: "pSuffix",
+      dateOfBirth: "pDob", sex: "pSex", religion: "pReligion", civilStatus: "pCivilStatus",
+      tin: "pTin", houseStreet: "pHouseStreet", barangay: "pBarangay", heightFt: "pHeight",
+      contactNumber: "pContact", email: "pEmail", disabilityOthers: "pDisabilityOthers",
+      employmentSubTypeOthers: "pEmploymentSubTypeOthers", monthsLookingForWork: "pMonthsLooking",
+      terminatedAbroadCountry: "pTerminatedAbroadCountry", jobSeekerCategoryOthers: "pJobSeekerCategoryOthers",
+      ofwCountry: "pOfwCountry", ofwReturnDate: "pOfwReturnDate", householdIdNo: "pHouseholdId",
+      preferredOccupation1: "pOcc1", preferredOccupation2: "pOcc2", preferredLocalAreas: "pLocal1",
+      preferredOverseasCountries: "pOverseas1", educationLevel: "pEdLevel", course: "pCourse",
+      yearGraduated: "pYearGrad", undergradLevelReached: "pUndergradLevel",
+      undergradYearLastAttended: "pUndergradYear", technicalTraining: "pTraining",
+      otherSkillsCustom: "pOtherSkillsCustom", skills: "pSkills", companyName: "pCompany",
+      position: "pPosition", experience: "pExperience",
+    };
+    const missingField = PROFILE_REQUIRED_FIELDS.find((key) => !currentUser?.[key] || String(currentUser[key]).trim() === "");
+    const target = missingField ? fieldIds[missingField] : !documentsRequirementMet() ? "pNoDocuments" : undefined;
+    if (target) scrollToProfileField(target);
+  }
 }
 
 /* ================= DOCUMENT UPLOAD (uploaded straight to the backend) ================= */
@@ -1923,6 +1987,7 @@ function verificationStatusCardHtml(u: AuthUser): string {
         <span class="text-sm font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
       </div>
       <p class="text-sm" style="color:var(--color-muted)">${verificationStatusDescription(u)}</p>
+      ${u.verificationStatus === "draft" ? registrationExpiryTimerHtml(u.registrationExpiresAt) : ""}
       ${
         u.role === "job_seeker" && (u.verificationStatus === "draft" || u.verificationStatus === "returned_for_completion")
           ? `<button onclick="dashTab('profile')" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg mt-3">Go to My Profile &rarr;</button>`
@@ -2049,8 +2114,40 @@ async function saveEmployerProfile() {
   };
   try {
     currentUser = await api.updateEmployerProfile(payload);
-    showToast(currentUser.verificationStatus === "pending_verification" ? "Establishment profile saved. Sensitive information changed — resubmitted for PESO re-verification." : "Establishment profile saved.");
+    const complete = isEmployerProfileCompleteClient(currentUser);
+    showToast(
+      currentUser.verificationStatus === "pending_verification"
+        ? "Establishment profile saved. Sensitive information changed — resubmitted for PESO re-verification."
+        : complete
+          ? "Establishment profile saved."
+          : "Establishment profile saved. Moving to the first missing required field.",
+    );
     dashTabInner("profile");
+    if (!complete) {
+      const fieldIds: Partial<Record<keyof AuthUser, string>> = {
+        employerBusinessName: "epBusinessName",
+        employerTin: "epTin",
+        employerType: "epType",
+        employerIndustry: "epIndustry",
+        employerStreet: "epStreet",
+        employerBarangay: "epBarangay",
+        employerMunicipality: "epMunicipality",
+        employerProvince: "epProvince",
+        employerOwnerName: "epOwnerName",
+        employerContactPerson: "epContactPerson",
+        employerPosition: "epPosition",
+        employerMobile: "epMobile",
+        employerEmail: "epEmail",
+      };
+      const requiredFields = [
+        "employerBusinessName", "employerTin", "employerType", "employerIndustry",
+        "employerStreet", "employerBarangay", "employerMunicipality", "employerProvince",
+        "employerOwnerName", "employerContactPerson", "employerPosition", "employerMobile", "employerEmail",
+      ] as const;
+      const missingField = requiredFields.find((key) => !currentUser?.[key] || String(currentUser[key]).trim() === "");
+      const target = missingField ? fieldIds[missingField] : undefined;
+      if (target) scrollToProfileField(target);
+    }
   } catch (err) {
     showToast(errMsg(err, "Could not save your establishment profile."));
   }
@@ -2095,9 +2192,17 @@ const GINGOOG_MAP_CENTER: L.LatLngTuple = [8.8227, 125.0975];
 const mountedMaps = new Map<string, L.Map>();
 const mountedMapMarkerSetters = new Map<string, (point: L.LatLng) => void>();
 const mountedMapMarkerClearers = new Map<string, () => void>();
+type GoogleVacancyMap = { map: google.maps.Map; marker: google.maps.Marker | null; Marker: typeof google.maps.Marker };
+const googleVacancyMaps = new Map<string, GoogleVacancyMap>();
+const googleLocationMaps = new Map<string, GoogleVacancyMap>();
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+let googleMapsApiPromise: Promise<void> | null = null;
+let googleMapConstructor: typeof google.maps.Map | null = null;
+let googleMarkerConstructor: typeof google.maps.Marker | null = null;
 type GeocodedLocation = { label: string; latitude: number; longitude: number };
 let vacancyLocationResults: GeocodedLocation[] = [];
 const locationSearchCache = new Map<string, GeocodedLocation[]>();
+let vacancyLocationReverseRequest = 0;
 
 function validMapCoordinates(latitude: number | null | undefined, longitude: number | null | undefined): L.LatLngTuple | null {
   if (typeof latitude !== "number" || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
@@ -2105,11 +2210,174 @@ function validMapCoordinates(latitude: number | null | undefined, longitude: num
   return [latitude, longitude];
 }
 
+function loadGoogleMapsApi(): Promise<void> {
+  if (googleMapConstructor && googleMarkerConstructor) return Promise.resolve();
+  if (typeof google !== "undefined" && google.maps
+    && typeof google.maps.Map === "function" && typeof google.maps.Marker === "function") {
+    googleMapConstructor = google.maps.Map;
+    googleMarkerConstructor = google.maps.Marker;
+    return Promise.resolve();
+  }
+  if (!GOOGLE_MAPS_API_KEY) {
+    return Promise.reject(new Error("Google Maps API key is missing. Add VITE_GOOGLE_MAPS_API_KEY to frontend/.env to enable Google Maps."));
+  }
+  if (!googleMapsApiPromise) {
+    googleMapsApiPromise = new Promise((resolve, reject) => {
+      const importLibraries = async () => {
+        try {
+          if (typeof google === "undefined" || !google.maps?.importLibrary) {
+            if (typeof google !== "undefined" && google.maps
+              && typeof google.maps.Map === "function" && typeof google.maps.Marker === "function") {
+              googleMapConstructor = google.maps.Map;
+              googleMarkerConstructor = google.maps.Marker;
+              resolve();
+              return;
+            }
+            throw new Error("Google Maps loaded without its map and marker libraries. Check that the Maps JavaScript API is enabled for this key.");
+          }
+          const mapsLibrary = await google.maps.importLibrary("maps") as google.maps.MapsLibrary;
+          const markerLibrary = await google.maps.importLibrary("marker") as google.maps.MarkerLibrary;
+          googleMapConstructor = mapsLibrary.Map;
+          googleMarkerConstructor = markerLibrary.Marker;
+          resolve();
+        } catch (error) {
+          googleMapsApiPromise = null;
+          reject(error);
+        }
+      };
+
+      if (typeof google !== "undefined" && google.maps) {
+        void importLibraries();
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&v=weekly&libraries=maps,marker`;
+      script.async = true;
+      script.onerror = () => {
+        googleMapsApiPromise = null;
+        reject(new Error("Google Maps could not load. Check the API key, enabled Maps JavaScript API, billing, and network connection."));
+      };
+      script.onload = () => void importLibraries();
+      document.head.appendChild(script);
+    });
+  }
+  return googleMapsApiPromise;
+}
+
+function setVacancyMapMarker(point: L.LatLng): void {
+  const googleMap = googleVacancyMaps.get("vfLocationMap");
+  if (googleMap) {
+    if (googleMap.marker) googleMap.marker.setPosition({ lat: point.lat, lng: point.lng });
+    else {
+      googleMap.marker = new googleMap.Marker({ map: googleMap.map, position: { lat: point.lat, lng: point.lng }, draggable: true, title: "Job location" });
+      googleMap.marker.addListener("dragend", () => {
+        const position = googleMap.marker?.getPosition();
+        if (position) void updateVacancyLocationFromMap(L.latLng(position.lat(), position.lng()));
+      });
+    }
+    return;
+  }
+  mountedMapMarkerSetters.get("vfLocationMap")?.(point);
+}
+
+function panVacancyMap(point: L.LatLng, zoom?: number): void {
+  const googleMap = googleVacancyMaps.get("vfLocationMap");
+  if (googleMap) {
+    googleMap.map.panTo({ lat: point.lat, lng: point.lng });
+    if (zoom !== undefined) googleMap.map.setZoom(zoom);
+  } else {
+    mountedMaps.get("vfLocationMap")?.setView(point, zoom);
+  }
+}
+
+async function mountVacancyGoogleMap(coordinates: L.LatLngTuple | null): Promise<void> {
+  const element = document.getElementById("vfLocationMap");
+  if (!element) return;
+  try {
+    await loadGoogleMapsApi();
+  } catch (error) {
+    if (!element.isConnected) return;
+    const status = document.getElementById("vfMapSetupStatus");
+    if (status) status.textContent = `${errMsg(error, "Google Maps could not load.")} The existing interactive map remains available.`;
+    mountLocationMap("vfLocationMap", coordinates, (point) => void updateVacancyLocationFromMap(point));
+    return;
+  }
+  if (!element.isConnected) return;
+
+  mountedMaps.get("vfLocationMap")?.remove();
+  mountedMaps.delete("vfLocationMap");
+  mountedMapMarkerSetters.delete("vfLocationMap");
+  mountedMapMarkerClearers.delete("vfLocationMap");
+  const center = coordinates ? { lat: coordinates[0], lng: coordinates[1] } : { lat: GINGOOG_MAP_CENTER[0], lng: GINGOOG_MAP_CENTER[1] };
+  const MapConstructor = googleMapConstructor;
+  const MarkerConstructor = googleMarkerConstructor;
+  if (!MapConstructor || !MarkerConstructor) throw new Error("Google Maps libraries were not initialized.");
+  const map = new MapConstructor(element, {
+    center,
+    zoom: coordinates ? 16 : 13,
+    mapTypeControl: true,
+    streetViewControl: false,
+    fullscreenControl: true,
+    clickableIcons: false,
+  });
+  const state: GoogleVacancyMap = { map, marker: null, Marker: MarkerConstructor };
+  googleVacancyMaps.set("vfLocationMap", state);
+  if (coordinates) setVacancyMapMarker(L.latLng(coordinates[0], coordinates[1]));
+  map.addListener("click", (event: google.maps.MapMouseEvent) => {
+    if (!event.latLng) return;
+    const point = L.latLng(event.latLng.lat(), event.latLng.lng());
+    setVacancyMapMarker(point);
+    void updateVacancyLocationFromMap(point);
+  });
+}
+
 window.addEventListener("resize", () => {
   requestAnimationFrame(() => mountedMaps.forEach((map) => map.invalidateSize({ pan: false })));
 }, { passive: true });
 
 function mountLocationMap(
+  elementId: string,
+  coordinates: L.LatLngTuple | null,
+  onPick?: (point: L.LatLng) => void,
+) {
+  if (onPick) {
+    mountLeafletLocationMap(elementId, coordinates, onPick);
+    return;
+  }
+  void mountGoogleLocationMap(elementId, coordinates).catch(() => {
+    if (document.getElementById(elementId)?.isConnected) mountLeafletLocationMap(elementId, coordinates);
+  });
+}
+
+async function mountGoogleLocationMap(elementId: string, coordinates: L.LatLngTuple | null): Promise<void> {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  await loadGoogleMapsApi();
+  if (!element.isConnected) return;
+  mountedMaps.get(elementId)?.remove();
+  mountedMaps.delete(elementId);
+  mountedMapMarkerSetters.delete(elementId);
+  mountedMapMarkerClearers.delete(elementId);
+  googleLocationMaps.get(elementId)?.marker?.setMap(null);
+  googleLocationMaps.delete(elementId);
+  const center = coordinates ? { lat: coordinates[0], lng: coordinates[1] } : { lat: GINGOOG_MAP_CENTER[0], lng: GINGOOG_MAP_CENTER[1] };
+  const MapConstructor = googleMapConstructor;
+  const MarkerConstructor = googleMarkerConstructor;
+  if (!MapConstructor || !MarkerConstructor) throw new Error("Google Maps libraries were not initialized.");
+  const map = new MapConstructor(element, {
+    center,
+    zoom: coordinates ? 16 : 13,
+    mapTypeControl: true,
+    streetViewControl: false,
+    fullscreenControl: true,
+    clickableIcons: false,
+  });
+  const marker = coordinates ? new MarkerConstructor({ map, position: center, title: "Job location" }) : null;
+  googleLocationMaps.set(elementId, { map, marker, Marker: MarkerConstructor });
+}
+
+function mountLeafletLocationMap(
   elementId: string,
   coordinates: L.LatLngTuple | null,
   onPick?: (point: L.LatLng) => void,
@@ -2168,7 +2436,35 @@ function updateVacancyLocationPin(point: L.LatLng, confirmed = false) {
     : `Pin selected · ${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}. Confirm this exact location before submitting.`;
 }
 
+async function updateVacancyLocationFromMap(point: L.LatLng) {
+  updateVacancyLocationPin(point);
+  const requestId = ++vacancyLocationReverseRequest;
+  const input = document.getElementById("vfLocation") as HTMLInputElement | null;
+  const areaSelectedInput = document.getElementById("vfLocationAreaSelected") as HTMLInputElement | null;
+  const resultsSelect = document.getElementById("vfLocationResults") as HTMLSelectElement | null;
+  const status = document.getElementById("vfLocationSearchStatus");
+  if (!input || !areaSelectedInput || !resultsSelect) return;
+
+  areaSelectedInput.value = "false";
+  input.value = `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
+  if (status) status.textContent = "Finding the Gingoog City address for this map pin…";
+  try {
+    const location = await api.reverseSearchEmployerLocation(point.lat, point.lng);
+    if (requestId !== vacancyLocationReverseRequest || !document.getElementById("vfLocation")) return;
+    input.value = location.label;
+    areaSelectedInput.value = "true";
+    vacancyLocationResults = [location];
+    resultsSelect.innerHTML = `<option value="0">${escapeReportHtml(location.label)}</option>`;
+    resultsSelect.classList.remove("hidden");
+    if (status) status.textContent = "Address found. Confirm the exact map pin before submitting.";
+  } catch (error) {
+    if (requestId !== vacancyLocationReverseRequest) return;
+    if (status) status.textContent = errMsg(error, "Could not find an address for this map pin. Try another location.");
+  }
+}
+
 function mountVacancyLocationPicker(vacancy?: Vacancy) {
+  vacancyLocationReverseRequest++;
   const latitudeInput = document.getElementById("vfLatitude") as HTMLInputElement | null;
   const longitudeInput = document.getElementById("vfLongitude") as HTMLInputElement | null;
   const selectedLocation = document.getElementById("vfSelectedLocation");
@@ -2189,12 +2485,11 @@ function mountVacancyLocationPicker(vacancy?: Vacancy) {
     ? `Saved pin loaded · ${coordinates[0].toFixed(5)}, ${coordinates[1].toFixed(5)}. Confirm or adjust it before submitting.`
     : "Search for a Gingoog City location, select a result, then place the exact workplace pin.";
 
-  mountLocationMap("vfLocationMap", coordinates, (point) => {
-    updateVacancyLocationPin(point);
-  });
+  void mountVacancyGoogleMap(coordinates);
 }
 
 async function searchVacancyLocations(): Promise<void> {
+  vacancyLocationReverseRequest++;
   const input = document.getElementById("vfLocation") as HTMLInputElement | null;
   const resultsSelect = document.getElementById("vfLocationResults") as HTMLSelectElement | null;
   const status = document.getElementById("vfLocationSearchStatus");
@@ -2231,6 +2526,7 @@ async function searchVacancyLocations(): Promise<void> {
 }
 
 function selectVacancyLocationResult(): void {
+  vacancyLocationReverseRequest++;
   const select = document.getElementById("vfLocationResults") as HTMLSelectElement | null;
   const input = document.getElementById("vfLocation") as HTMLInputElement | null;
   const areaSelected = document.getElementById("vfLocationAreaSelected") as HTMLInputElement | null;
@@ -2241,14 +2537,15 @@ function selectVacancyLocationResult(): void {
   input.value = result.label;
   areaSelected.value = "true";
   const point = L.latLng(result.latitude, result.longitude);
-  mountedMaps.get("vfLocationMap")?.setView(point, 16);
-  mountedMapMarkerSetters.get("vfLocationMap")?.(point);
+  panVacancyMap(point, 16);
+  setVacancyMapMarker(point);
   updateVacancyLocationPin(point);
   const status = document.getElementById("vfLocationSearchStatus");
   if (status) status.textContent = "Area selected. Adjust the pin to the exact workplace, then confirm the location.";
 }
 
 function vacancyLocationTextChanged(): void {
+  vacancyLocationReverseRequest++;
   const areaSelected = document.getElementById("vfLocationAreaSelected") as HTMLInputElement | null;
   const confirmedInput = document.getElementById("vfLocationConfirmed") as HTMLInputElement | null;
   const status = document.getElementById("vfLocationSearchStatus");
@@ -2270,6 +2567,7 @@ function confirmVacancyLocation(): void {
 }
 
 function clearVacancyLocation(): void {
+  vacancyLocationReverseRequest++;
   const input = document.getElementById("vfLocation") as HTMLInputElement | null;
   const latitudeInput = document.getElementById("vfLatitude") as HTMLInputElement | null;
   const longitudeInput = document.getElementById("vfLongitude") as HTMLInputElement | null;
@@ -2282,8 +2580,11 @@ function clearVacancyLocation(): void {
   if (confirmedInput) confirmedInput.value = "false";
   if (areaSelected) areaSelected.value = "false";
   results?.classList.add("hidden");
+  const googleMap = googleVacancyMaps.get("vfLocationMap");
+  googleMap?.marker?.setMap(null);
+  if (googleMap) googleMap.marker = null;
+  panVacancyMap(L.latLng(GINGOOG_MAP_CENTER[0], GINGOOG_MAP_CENTER[1]), 13);
   mountedMapMarkerClearers.get("vfLocationMap")?.();
-  mountedMaps.get("vfLocationMap")?.setView(GINGOOG_MAP_CENTER, 13);
   const selectedLocation = document.getElementById("vfSelectedLocation");
   const status = document.getElementById("vfLocationSearchStatus");
   if (selectedLocation) selectedLocation.textContent = "No map pin selected. Search for a location to begin.";
@@ -2328,11 +2629,11 @@ function vacancyFormHtml(existing?: Vacancy): string {
       <div class="mb-5">
         <label class="text-xs font-semibold block mb-1">Pin the exact job location *</label>
         <p class="text-xs mb-2" style="color:var(--color-muted)">Select an area, then click the map or drag the pin to the exact workplace. Confirm the location before submitting.</p>
-        <div id="vfLocationMap" class="location-map-picker rounded-lg border" style="height:300px;border-color:var(--color-border)"></div>
+        <p id="vfMapSetupStatus" class="text-xs mb-2" style="color:var(--color-muted)" role="status"></p>
+        <div id="vfLocationMap" class="location-map-picker rounded-lg border" style="height:360px;border-color:var(--color-border)"></div>
         <p id="vfSelectedLocation" class="text-xs mt-2" style="color:var(--color-muted)"></p>
         <div class="flex flex-wrap items-center gap-2 mt-3">
           <button type="button" onclick="confirmVacancyLocation()" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg">Confirm Location</button>
-          <span class="text-xs" style="color:var(--color-muted)">Map tiles &copy; OpenStreetMap contributors</span>
         </div>
         <input id="vfLatitude" type="hidden" value="${v?.latitude ?? ""}">
         <input id="vfLongitude" type="hidden" value="${v?.longitude ?? ""}">
@@ -3175,6 +3476,7 @@ function staffSeekerListRow(s: AuthUser & { documentCount: number }): string {
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${s.name || s.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${s.email} &middot; Submitted ${s.verificationSubmittedAt ? s.verificationSubmittedAt.slice(0, 10) : "&mdash;"} &middot; ${s.documentCount} doc(s)</div>
+        ${s.verificationStatus === "draft" ? registrationExpiryTimerHtml(s.registrationExpiresAt) : ""}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
@@ -3189,6 +3491,7 @@ function staffEmployerListRow(e: AuthUser): string {
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${e.employerBusinessName || e.employerCompanyName || e.name || e.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${e.email} &middot; Submitted ${e.verificationSubmittedAt ? e.verificationSubmittedAt.slice(0, 10) : "&mdash;"}</div>
+        ${e.verificationStatus === "draft" ? registrationExpiryTimerHtml(e.registrationExpiresAt) : ""}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
@@ -4876,6 +5179,8 @@ async function init() {
   }
   await refreshHomeStats();
   window.setInterval(refreshHomeStats, 30000);
+  window.setInterval(updateRegistrationExpiryTimers, 1000);
+  updateRegistrationExpiryTimers();
   updateActiveNavLink("home"); // the home view starts active server-side in index.html
 
   const handledAuthLink = await handleAuthLinkParams();

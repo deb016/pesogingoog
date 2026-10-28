@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.66.8",
     "@types/leaflet": "^1.9.22",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
