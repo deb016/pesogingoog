@@ -204,6 +204,94 @@ async function sendProfileReviewEmail({ to, name, role, status, remarks }) {
   });
 }
 
+async function sendReferralInvitationEmail({ to, name, vacancyTitle, employer, matchScore }) {
+  const safeName = escapeHtml(name || "there");
+  const safeTitle = escapeHtml(vacancyTitle || "a job vacancy");
+  const safeEmployer = escapeHtml(employer || "an employer");
+  const dashboardUrl = escapeHtml(APP_BASE_URL);
+  const message = `PESO Staff has referred you to review the ${vacancyTitle || "job"} position at ${employer || "an employer"}. This is an invitation, not an application. Sign in to your PESO account to review the vacancy and choose whether to apply.`;
+  return sendMail({
+    to,
+    subject: `PESO Gingoog City: Job referral for ${vacancyTitle || "you"}`,
+    text: `Hello ${name || "there"},\n\n${message}\n\nMatch score: ${matchScore}%\n\nSign in to your account: ${APP_BASE_URL}\n\nPESO Gingoog City`,
+    html: `
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:24px;background:#f2f5f7;color:#202833;font-family:Arial,Helvetica,sans-serif">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e7eb">
+            <tr><td style="padding:24px 28px;border-top:5px solid #1555a5">
+              <p style="margin:0 0 20px;color:#38516e;font-size:12px;font-weight:bold;letter-spacing:1px">PESO GINGOOG CITY</p>
+              <h1 style="margin:0 0 20px;color:#173f70;font-size:22px">A PESO Staff referral is waiting for you</h1>
+              <p style="margin:0 0 12px;font-size:15px;line-height:1.6">Hello ${safeName},</p>
+              <p style="margin:0;font-size:15px;line-height:1.7">PESO Staff recommends that you review <strong>${safeTitle}</strong> at <strong>${safeEmployer}</strong>.</p>
+              <p style="margin:16px 0;font-size:14px;line-height:1.6">Match score: <strong>${Number(matchScore)}%</strong></p>
+              <p style="margin:0;font-size:14px;line-height:1.6">This is an invitation, not an application. Sign in to review the vacancy and choose whether to apply.</p>
+              <p style="margin:24px 0 0;font-size:14px"><a href="${dashboardUrl}" style="color:#1555a5">Sign in to your PESO account</a></p>
+            </td></tr>
+            <tr><td style="padding:16px 28px;background:#f7f9fb;border-top:1px solid #e7ebef;color:#697586;font-size:12px;line-height:1.5;text-align:center">
+              Public Employment Service Office - Gingoog City
+            </td></tr>
+          </table>
+        </body>
+      </html>`,
+  });
+}
+
+async function sendVacancyReviewEmail({ to, name, vacancyTitle, status, remarks }) {
+  const review = {
+    approved: {
+      subject: "Your PESO Gingoog City vacancy has been approved",
+      heading: "Vacancy approved",
+      message: "PESO Staff approved your job vacancy. It is now visible to job seekers.",
+    },
+    returned_for_completion: {
+      subject: "Action needed: update your PESO Gingoog City vacancy",
+      heading: "Vacancy returned for changes",
+      message: "PESO Staff reviewed your job vacancy and returned it for changes. Sign in to review the remarks, edit the vacancy, and resubmit it for approval.",
+    },
+    rejected: {
+      subject: "Update about your PESO Gingoog City vacancy",
+      heading: "Vacancy not approved",
+      message: "PESO Staff did not approve your job vacancy. You may edit it and resubmit it for approval.",
+    },
+  }[status];
+  if (!review) throw new Error(`Unsupported vacancy review email status: ${status}`);
+
+  const safeName = escapeHtml(name || "Employer");
+  const safeTitle = escapeHtml(vacancyTitle || "your job vacancy");
+  const safeRemarks = remarks ? escapeHtml(remarks).replace(/\r?\n/g, "<br>") : "";
+  const remarksHtml = safeRemarks
+    ? `<div style="margin-top:20px;padding:14px;background:#f7f9fb;border-left:3px solid #1555a5"><strong>Remarks from PESO Staff</strong><p style="margin:8px 0 0;line-height:1.6">${safeRemarks}</p></div>`
+    : "";
+  const remarksText = remarks ? `\n\nRemarks from PESO Staff:\n${remarks}` : "";
+  const dashboardUrl = escapeHtml(APP_BASE_URL);
+  return sendMail({
+    to,
+    subject: review.subject,
+    text: `Hello ${name || "Employer"},\n\n${review.message}\n\nVacancy: ${vacancyTitle || "your job vacancy"}${remarksText}\n\nSign in to your account: ${APP_BASE_URL}\n\nPESO Gingoog City`,
+    html: `
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:24px;background:#f2f5f7;color:#202833;font-family:Arial,Helvetica,sans-serif">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e7eb">
+            <tr><td style="padding:24px 28px;border-top:5px solid #1555a5">
+              <p style="margin:0 0 20px;color:#38516e;font-size:12px;font-weight:bold;letter-spacing:1px">PESO GINGOOG CITY</p>
+              <h1 style="margin:0 0 20px;color:#173f70;font-size:22px">${review.heading}</h1>
+              <p style="margin:0 0 12px;font-size:15px;line-height:1.6">Hello ${safeName},</p>
+              <p style="margin:0;font-size:15px;line-height:1.7">${review.message}</p>
+              <p style="margin:16px 0 0;font-size:14px;line-height:1.6"><strong>Vacancy:</strong> ${safeTitle}</p>
+              ${remarksHtml}
+              <p style="margin:24px 0 0;font-size:14px"><a href="${dashboardUrl}" style="color:#1555a5">Sign in to your PESO account</a></p>
+            </td></tr>
+            <tr><td style="padding:16px 28px;background:#f7f9fb;border-top:1px solid #e7ebef;color:#697586;font-size:12px;line-height:1.5;text-align:center">
+              Public Employment Service Office - Gingoog City
+            </td></tr>
+          </table>
+        </body>
+      </html>`,
+  });
+}
+
 async function sendVerificationEmail(email, token) {
   const link = `${APP_BASE_URL}/?verify=${encodeURIComponent(token)}`;
   return sendMail({
@@ -236,4 +324,11 @@ async function sendPasswordResetEmail(email, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail, sendProfileReviewEmail };
+module.exports = {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendStaffFollowUpEmail,
+  sendProfileReviewEmail,
+  sendReferralInvitationEmail,
+  sendVacancyReviewEmail,
+};

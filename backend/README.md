@@ -64,7 +64,10 @@ PESO Staff verification, return-for-completion, and rejection decisions also
 send email notifications to the affected Job Seeker or Employer. Return and
 rejection emails include the Staff remarks when provided. These messages use
 the configured Brevo email service (`BREVO_API_KEY` and `BREVO_SENDER_EMAIL`);
-in-app notifications are still created if email delivery is unavailable.
+in-app notifications are still created if email delivery is unavailable. Staff
+job referrals email the referred Job Seeker, and vacancy approval, return, and
+rejection decisions email the Employer; return and rejection messages include
+the Staff remarks.
 
 **Change the seeded admin password** before this goes anywhere near production
 — it's only there so you have something to log into immediately.
@@ -115,6 +118,8 @@ Staff/Admin account creation or password changes.
 | GET | `/api/vacancies/:id` | One vacancy |
 
 Employer vacancy forms include an interactive OpenStreetMap location picker.
+The Employer dashboard separates saved Draft vacancies from Posted vacancies,
+including those pending approval, approved, returned, rejected, expired, or closed.
 Employers choose an expiry period of 2–5 days. The period starts when PESO approves
 the vacancy; expired approved vacancies are removed from public listings automatically.
 A map pin is required before submitting a vacancy for PESO approval; its
@@ -200,13 +205,13 @@ const toBase64 = (file) => new Promise((res) => {
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | GET | `/api/staff/profile-edit-requests` | — | Pending requests for Job Seekers and Employers |
-| POST | `/api/staff/profile-edit-requests/:email/:decision` | `{ remarks? }` | Staff/Admin can `approve` or `decline`; approval returns the profile for completion so the user can edit and resubmit |
+| POST | `/api/staff/profile-edit-requests/:email/:decision` | `{ remarks? }` | Staff can `approve` or `decline`; approval returns the profile for completion so the user can edit and resubmit |
 
 ### Staff job referrals
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | `/api/staff/refer` | `{ seekerEmail, vacancyId }` | Sends the seeker a job invitation; the seeker reviews vacancy details and must apply before the employer sees an application |
+| POST | `/api/staff/refer` | `{ seekerEmail, vacancyId }` | Creates an in-app notification and emails the seeker a job invitation; the seeker reviews vacancy details and must apply before the employer sees an application |
 | POST | `/api/staff/applications/:id/email` | `{ message }` | Staff/Admin can email a message of up to 4,000 characters to the seeker on a hired application; delivery uses the configured Brevo email service |
 
 The protected Admin dashboard in the frontend uses these endpoints for

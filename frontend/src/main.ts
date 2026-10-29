@@ -1322,12 +1322,12 @@ function tabsForRole(role: string): { key: string; label: string }[] {
       { key: "vacancies", label: "Vacancy Approvals" },
       { key: "refer", label: "Refer Seeker" },
       { key: "applications", label: "Application Review" },
+      { key: "notifications", label: "Notifications" },
     ];
   }
   if (role === "admin") {
     return [
       { key: "overview", label: "Overview" },
-      { key: "editRequests", label: "Profile Edit Requests" },
       { key: "seekers", label: "Job Seekers" },
       { key: "employers", label: "Employers" },
       { key: "vacancyInventory", label: "Vacancy Inventory" },
@@ -1336,6 +1336,7 @@ function tabsForRole(role: string): { key: string; label: string }[] {
       { key: "staffmgmt", label: "Staff Accounts" },
       { key: "adminmgmt", label: "Admin Accounts" },
       { key: "activity", label: "Activity Log" },
+      { key: "notifications", label: "Notifications" },
     ];
   }
   return [
@@ -2272,6 +2273,7 @@ let employerVacancies: Vacancy[] = [];
 let employerApplicants: (Application & { seekerName: string; seekerContact: string; seekerSkills: string; seekerEducation: string; seekerCourse: string; seekerExperience: string; vacancyTitle: string })[] = [];
 let showVacancyForm = false;
 let editingVacancyId: number | null = null;
+let employerVacancyView: "draft" | "posted" = "posted";
 
 const EMPLOYER_TYPE_CATEGORIES: Record<string, string[]> = {
   Public: ["National Government Agency", "Local Government Unit", "Government-Owned and Controlled Corporation", "State/Local University or College", "Other Government Agency"],
@@ -2954,6 +2956,7 @@ async function submitVacancyForm(id: number | null, saveAsDraft: boolean) {
     }
     showVacancyForm = false;
     editingVacancyId = null;
+    employerVacancyView = saveAsDraft ? "draft" : "posted";
     employerVacancies = await api.getEmployerVacancies();
     dashTabInner("vacancies");
   } catch (err) {
@@ -2965,12 +2968,19 @@ async function submitDraftVacancy(id: number) {
   try {
     await api.submitEmployerVacancy(id);
     showToast("Vacancy submitted for PESO approval.");
+    employerVacancyView = "posted";
     employerVacancies = await api.getEmployerVacancies();
     dashTabInner("vacancies");
   } catch (err) {
     showToast(errMsg(err, "Could not submit this vacancy."));
   }
 }
+
+function setEmployerVacancyView(view: "draft" | "posted") {
+  employerVacancyView = view;
+  dashTabInner("vacancies");
+}
+
 async function closeVacancyAction(id: number) {
   if (!await appConfirm("This vacancy will no longer be visible to Job Seekers.", {
     title: "Close this vacancy?",
@@ -3337,6 +3347,9 @@ async function renderEmployerDash(tab: string) {
     } catch {}
     if (currentUser?.role !== "employer" || currentDashTab !== "vacancies") return;
     const canPost = u.verificationStatus === "verified";
+    const draftVacancies = employerVacancies.filter((vacancy) => vacancy.status === "draft");
+    const postedVacancies = employerVacancies.filter((vacancy) => vacancy.status !== "draft");
+    const visibleVacancies = employerVacancyView === "draft" ? draftVacancies : postedVacancies;
     if (!canPost) {
       showVacancyForm = false;
       editingVacancyId = null;
@@ -3352,7 +3365,11 @@ async function renderEmployerDash(tab: string) {
             : `<div class="rounded-lg px-4 py-3 text-xs font-medium mb-4" style="background:#FCEFD9; color:#8A5A0F">Your establishment must be verified by PESO Staff before you can add job vacancies. <button onclick="dashTab('profile')" class="underline font-semibold">Go to Establishment Profile &rarr;</button></div>`
       }
       ${canPost && showVacancyForm ? vacancyFormHtml(editingVacancyId ? employerVacancies.find((v) => v.id === editingVacancyId) : undefined) : ""}
-      <div class="space-y-3 stagger-grid">${employerVacancies.map(employerVacancyRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">No vacancies posted yet.</p>`}</div>
+      <div class="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter vacancies">
+        <button onclick="setEmployerVacancyView('posted')" aria-pressed="${employerVacancyView === "posted"}" class="${employerVacancyView === "posted" ? "btn-primary" : "btn-outline"} text-xs font-semibold px-4 py-2 rounded-lg">Posted (${postedVacancies.length})</button>
+        <button onclick="setEmployerVacancyView('draft')" aria-pressed="${employerVacancyView === "draft"}" class="${employerVacancyView === "draft" ? "btn-primary" : "btn-outline"} text-xs font-semibold px-4 py-2 rounded-lg">Drafts (${draftVacancies.length})</button>
+      </div>
+      <div class="space-y-3 stagger-grid">${visibleVacancies.map(employerVacancyRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">${employerVacancyView === "draft" ? "No draft vacancies. Save a vacancy as a draft to finish it later." : "No posted vacancies yet. Submit a vacancy for PESO approval to see it here."}</p>`}</div>
     `;
     if (canPost && showVacancyForm) {
       mountVacancyLocationPicker(editingVacancyId ? employerVacancies.find((v) => v.id === editingVacancyId) : undefined);
@@ -4157,6 +4174,13 @@ function employerDetailCardHtml(d: { profile: AuthUser; vacancies: Vacancy[]; do
 async function renderStaffDash(tab: string) {
   const content = $("dashContent");
 
+  if (tab === "notifications") {
+    if (currentNotifications().some((n) => !n.read)) api.markAllNotificationsRead().catch(() => {});
+    currentNotifications().forEach((n) => (n.read = true));
+    content.innerHTML = notificationsTabHtml("Updates about PESO account and system activity.");
+    return;
+  }
+
   if (tab === "overview") {
     content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">PESO Staff Dashboard</h1><p class="text-sm mb-6" style="color:var(--color-muted)">Loading&hellip;</p>`;
     let seekers: AuthUser[] = [], employers: AuthUser[] = [], vacs: Vacancy[] = [];
@@ -4273,12 +4297,12 @@ async function renderProfileEditRequests(content: HTMLElement) {
   try {
     requests = await api.staffGetProfileEditRequests();
   } catch (err) {
-    if (currentUser?.role === "staff" || currentUser?.role === "admin") {
+    if (currentUser?.role === "staff") {
       content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">Profile Edit Requests</h1><p class="text-sm" style="color:#C0392B">${escapeReportHtml(errMsg(err, "Could not load edit requests."))}</p>`;
     }
     return;
   }
-  if (!["staff", "admin"].includes(currentUser?.role || "") || currentDashTab !== "editRequests") return;
+  if (currentUser?.role !== "staff" || currentDashTab !== "editRequests") return;
   content.innerHTML = `
     <h1 class="font-display text-2xl font-semibold mb-1">Profile Edit Requests</h1>
     <p class="text-sm mb-6" style="color:var(--color-muted)">Approve a request to let the account update its profile and resubmit it for verification. Declining keeps the current verified or rejected profile unchanged.</p>
@@ -5173,6 +5197,13 @@ function adminEmployerDetailHtml(d: { profile: AuthUser; vacancies: Vacancy[]; a
 async function renderAdminDash(tab: string) {
   const content = $("dashContent");
 
+  if (tab === "notifications") {
+    if (currentNotifications().some((n) => !n.read)) api.markAllNotificationsRead().catch(() => {});
+    currentNotifications().forEach((n) => (n.read = true));
+    content.innerHTML = notificationsTabHtml("Updates about PESO account and system activity.");
+    return;
+  }
+
   if (tab === "reports") {
     await renderAdminReports();
     return;
@@ -5195,11 +5226,6 @@ async function renderAdminDash(tab: string) {
         <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.filter((s) => s.verificationStatus === "verified").length + employers.filter((e) => e.verificationStatus === "verified").length}</div><div class="text-xs" style="color:var(--color-muted)">Verified Accounts</div></div>
       </div>
     `;
-    return;
-  }
-
-  if (tab === "editRequests") {
-    await renderProfileEditRequests(content);
     return;
   }
 
@@ -5461,6 +5487,7 @@ declare global {
     staffRejectVacancyAction: typeof staffRejectVacancyAction;
     referVacancyChanged: typeof referVacancyChanged;
     referSeekerAction: typeof referSeekerAction;
+    setEmployerVacancyView: typeof setEmployerVacancyView;
     deleteNotificationAction: typeof deleteNotificationAction;
     clearAllNotificationsAction: typeof clearAllNotificationsAction;
     adminClearActivityLogAction: typeof adminClearActivityLogAction;
@@ -5584,6 +5611,7 @@ window.staffReturnVacancyAction = staffReturnVacancyAction;
 window.staffRejectVacancyAction = staffRejectVacancyAction;
 window.referVacancyChanged = referVacancyChanged;
 window.referSeekerAction = referSeekerAction;
+window.setEmployerVacancyView = setEmployerVacancyView;
 window.deleteNotificationAction = deleteNotificationAction;
 window.clearAllNotificationsAction = clearAllNotificationsAction;
 window.adminClearActivityLogAction = adminClearActivityLogAction;

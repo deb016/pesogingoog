@@ -78,7 +78,7 @@ first run.
   it. Every action is recorded in an append-only `verification_history` table.
 - **Profile edit requests after a decision.** Job Seekers and Employers with
   verified or rejected profiles can request another editing attempt from their
-  profile. Staff/Admin review requests in **Profile Edit Requests**. Approval
+  profile. Staff review requests in **Profile Edit Requests**. Approval
   unlocks profile editing and allows resubmission for verification; declining
   keeps the existing profile status and allows the user to request again later.
 - **Employer verification + vacancy approval**, mirroring the same workflow:

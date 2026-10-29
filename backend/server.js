@@ -28,7 +28,14 @@ const PDFDocument = require("pdfkit");
 })();
 
 const { db, hashPassword, verifyPassword, ready: dbReady } = require("./db");
-const { sendVerificationEmail, sendPasswordResetEmail, sendStaffFollowUpEmail, sendProfileReviewEmail } = require("./mailer");
+const {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendStaffFollowUpEmail,
+  sendProfileReviewEmail,
+  sendReferralInvitationEmail,
+  sendVacancyReviewEmail,
+} = require("./mailer");
 
 const PORT = process.env.PORT || 3001;
 const UPLOAD_DIR = path.join(__dirname, "uploads");
@@ -1718,7 +1725,7 @@ route("GET", "/api/staff/seekers", async (req, res, params, url) => {
 });
 
 route("GET", "/api/staff/profile-edit-requests", async (req, res) => {
-  if (!await requireStaffOrAdmin(req, res)) return;
+  if (!await requireRole(req, res, ["staff"])) return;
   const rows = await db.all(`
     SELECT * FROM users
     WHERE role IN ('job_seeker', 'employer') AND profile_edit_request_status = 'pending'
@@ -1728,7 +1735,7 @@ route("GET", "/api/staff/profile-edit-requests", async (req, res) => {
 });
 
 route("POST", "/api/staff/profile-edit-requests/:email/:decision", async (req, res, params) => {
-  const staffUser = await requireStaffOrAdmin(req, res);
+  const staffUser = await requireRole(req, res, ["staff"]);
   if (!staffUser) return;
   const email = decodeURIComponent(params.email).toLowerCase();
   const decision = params.decision;
@@ -1975,6 +1982,7 @@ route("POST", "/api/staff/vacancies/:id/approve", async (req, res, params) => {
   (await db.run("UPDATE vacancies SET status = 'approved', remarks = '', approved_by = ?, approved_at = ?, posted = ?, valid_until = ? WHERE id = ?", [staffUser.email, nowIso(), today(), vacancyExpiryDate(expiryDays), vac.id]));
   await logActivity({ userEmail: vac.employer_email, userRole: "employer", action: "job_vacancy_approval", relatedRecord: `vacancy #${vac.id}`, performedBy: staffUser.email, performedByRole: staffUser.role });
   if (vac.employer_email) await notify(vac.employer_email, `Your job vacancy "${vac.title}" has been approved by PESO Staff and is now visible to job seekers.`);
+  if (vac.employer_email) await sendVacancyReviewEmail({ to: vac.employer_email, vacancyTitle: vac.title, status: "approved" });
   const row = (await db.get("SELECT * FROM vacancies WHERE id = ?", [vac.id]));
   send(res, 200, { vacancy: serializeVacancy(row) });
 });
@@ -1991,6 +1999,7 @@ route("POST", "/api/staff/vacancies/:id/return", async (req, res, params) => {
   (await db.run("UPDATE vacancies SET status = 'returned_for_completion', remarks = ? WHERE id = ?", [remarks, vac.id]));
   await logActivity({ userEmail: vac.employer_email, userRole: "employer", action: "job_vacancy_returned", relatedRecord: `vacancy #${vac.id}`, performedBy: staffUser.email, performedByRole: staffUser.role, remarks });
   if (vac.employer_email) await notify(vac.employer_email, `Your job vacancy "${vac.title}" needs changes before it can be approved. Staff Remarks: ${remarks}`);
+  if (vac.employer_email) await sendVacancyReviewEmail({ to: vac.employer_email, vacancyTitle: vac.title, status: "returned_for_completion", remarks });
   const row = (await db.get("SELECT * FROM vacancies WHERE id = ?", [vac.id]));
   send(res, 200, { vacancy: serializeVacancy(row) });
 });
@@ -2011,6 +2020,7 @@ route("POST", "/api/staff/vacancies/:id/reject", async (req, res, params) => {
   (await db.run("UPDATE vacancies SET status = 'rejected', remarks = ? WHERE id = ?", [remarks, vac.id]));
   await logActivity({ userEmail: vac.employer_email, userRole: "employer", action: "job_vacancy_rejected", relatedRecord: `vacancy #${vac.id}`, performedBy: staffUser.email, performedByRole: staffUser.role, remarks });
   if (vac.employer_email) await notify(vac.employer_email, `Your job vacancy "${vac.title}" was rejected by PESO Staff. Reason: ${remarks}. You may edit and resubmit it.`);
+  if (vac.employer_email) await sendVacancyReviewEmail({ to: vac.employer_email, vacancyTitle: vac.title, status: "rejected", remarks });
   const row = (await db.get("SELECT * FROM vacancies WHERE id = ?", [vac.id]));
   send(res, 200, { vacancy: serializeVacancy(row) });
 });
@@ -2093,6 +2103,13 @@ route("POST", "/api/staff/refer", async (req, res) => {
   const referralId = existingReferral?.id || result.lastInsertRowid;
 
   await notify(seekerEmail, `PESO Staff recommends that you review the "${vacancy.title}" vacancy at ${vacancy.employer} (${breakdown.totalScore}% match). View the job details and choose whether to apply.`);
+  await sendReferralInvitationEmail({
+    to: seekerEmail,
+    name: seeker.name,
+    vacancyTitle: vacancy.title,
+    employer: vacancy.employer,
+    matchScore: breakdown.totalScore,
+  });
   await logActivity({ userEmail: seekerEmail, userRole: "job_seeker", action: "staff_referral", relatedRecord: `vacancy #${vacancyId}`, performedBy: staffUser.email, performedByRole: staffUser.role, remarks: `Invitation #${referralId}; Match Score: ${breakdown.totalScore}%` });
 
   send(res, existingReferral ? 200 : 201, { referral: { id: referralId, seekerEmail, vacancyId, referredBy: staffUser.email, status: "pending", createdAt } });
