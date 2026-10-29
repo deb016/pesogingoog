@@ -2193,11 +2193,6 @@ function verificationStatusCardHtml(u: AuthUser): string {
       <p class="text-sm" style="color:var(--color-muted)">${verificationStatusDescription(u)}</p>
       ${u.verificationStatus === "draft" ? registrationExpiryTimerHtml(u.registrationExpiresAt) : ""}
       ${
-        u.role === "job_seeker" && (u.verificationStatus === "draft" || u.verificationStatus === "returned_for_completion")
-          ? `<button onclick="dashTab('profile')" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg mt-3">Go to My Profile &rarr;</button>`
-          : ""
-      }
-      ${
         u.role === "employer" && (u.verificationStatus === "draft" || u.verificationStatus === "returned_for_completion")
           ? `<button onclick="dashTab('profile')" class="btn-primary text-xs font-semibold px-4 py-2 rounded-lg mt-3">Go to Establishment Profile &rarr;</button>`
           : ""
@@ -4948,32 +4943,36 @@ async function adminDeleteApplicationAction(id: number) {
 function adminSeekerListRow(s: AuthUser & { profileComplete: boolean; applicationCount: number; documentCount: number }): string {
   const meta = VERIFICATION_STATUS_META[s.verificationStatus] || VERIFICATION_STATUS_META.draft;
   return `
-    <div class="card rounded-xl p-4 flex items-center justify-between gap-3">
+    <div class="card rounded-xl p-4 flex items-center justify-between gap-3 admin-account-list-row">
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${s.name || s.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${s.email} &middot; ${s.applicationCount} application(s) &middot; ${s.documentCount} doc(s)</div>
         ${s.verificationStatus === "draft" ? registrationExpiryTimerHtml(s.registrationExpiresAt) : ""}
       </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2 flex-shrink-0 admin-account-list-actions">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
-        <button onclick="adminOpenSeekerDetail('${s.email}')" class="btn-outline text-xs font-semibold px-3 py-1.5 rounded-lg">View</button>
-        <button onclick="adminDeleteSeekerAction('${s.email}')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete</button>
+        <div class="admin-account-list-buttons">
+          <button onclick="adminOpenSeekerDetail('${s.email}')" class="btn-outline text-xs font-semibold px-3 py-1.5 rounded-lg">View</button>
+          <button onclick="adminDeleteSeekerAction('${s.email}')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete</button>
+        </div>
       </div>
     </div>`;
 }
 function adminEmployerListRow(e: AuthUser & { vacancyCount: number }): string {
   const meta = VERIFICATION_STATUS_META[e.verificationStatus] || VERIFICATION_STATUS_META.draft;
   return `
-    <div class="card rounded-xl p-4 flex items-center justify-between gap-3">
+    <div class="card rounded-xl p-4 flex items-center justify-between gap-3 admin-account-list-row">
       <div class="min-w-0">
         <div class="font-semibold text-sm truncate">${e.employerBusinessName || e.employerCompanyName || e.name || e.email}</div>
         <div class="text-xs truncate" style="color:var(--color-muted)">${e.email} &middot; ${e.vacancyCount} vacanc${e.vacancyCount === 1 ? "y" : "ies"}</div>
         ${e.verificationStatus === "draft" ? registrationExpiryTimerHtml(e.registrationExpiresAt) : ""}
       </div>
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2 flex-shrink-0 admin-account-list-actions">
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
-        <button onclick="adminOpenEmployerDetail('${e.email}')" class="btn-outline text-xs font-semibold px-3 py-1.5 rounded-lg">View</button>
-        <button onclick="adminDeleteEmployerAction('${e.email}')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete</button>
+        <div class="admin-account-list-buttons">
+          <button onclick="adminOpenEmployerDetail('${e.email}')" class="btn-outline text-xs font-semibold px-3 py-1.5 rounded-lg">View</button>
+          <button onclick="adminDeleteEmployerAction('${e.email}')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete</button>
+        </div>
       </div>
     </div>`;
 }

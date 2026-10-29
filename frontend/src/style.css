@@ -709,6 +709,23 @@ textarea:focus {
   #dashContent .card {
     max-width: 100%;
   }
+  #dashContent .admin-account-list-row {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  #dashContent .admin-account-list-actions {
+    min-width: 0;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .admin-account-list-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
 }
 a:focus,
 button:focus {
