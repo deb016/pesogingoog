@@ -145,6 +145,11 @@ export async function getVacancies(): Promise<Vacancy[]> {
   return data.vacancies;
 }
 
+export async function getVacancy(id: number): Promise<Vacancy> {
+  const data = await request<{ vacancy: Vacancy }>("GET", `/api/vacancies/${id}`);
+  return data.vacancy;
+}
+
 export async function getPublicStats(): Promise<{ openVacancies: number; placementsThisMonth: number; partnerEmployers: number }> {
   const data = await request<{ stats: { openVacancies: number; placementsThisMonth: number; partnerEmployers: number } }>("GET", "/api/public/stats");
   return data.stats;
@@ -207,6 +212,10 @@ export async function updateEmployerVacancy(id: number, v: Partial<Vacancy>): Pr
 }
 export async function submitEmployerVacancy(id: number): Promise<Vacancy> {
   const data = await request<{ vacancy: Vacancy }>("POST", `/api/employer/vacancies/${id}/submit`);
+  return data.vacancy;
+}
+export async function repostEmployerVacancy(id: number): Promise<Vacancy> {
+  const data = await request<{ vacancy: Vacancy }>("POST", `/api/employer/vacancies/${id}/repost`);
   return data.vacancy;
 }
 export async function closeEmployerVacancy(id: number): Promise<Vacancy> {

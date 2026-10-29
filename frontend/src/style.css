@@ -360,6 +360,56 @@ header button.group img {
 .notif-pulse {
   animation: notifPulse 1.6s ease-in-out infinite;
 }
+.notification-count-badge {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface);
+  border-radius: 999px;
+  background: var(--color-warn);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.notification-row {
+  border-left: 3px solid transparent;
+}
+.notification-row.is-unread {
+  border-left-color: var(--color-warn);
+  background: #fffaf0;
+}
+.notification-row.is-read {
+  opacity: 0.88;
+}
+.notification-read-indicator {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--color-warn);
+}
+.notification-content {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.notification-content:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.notification-row.is-read .notification-read-indicator {
+  display: none;
+}
 @keyframes notifPulse {
   0%, 100% {
     transform: scale(1);
@@ -738,6 +788,9 @@ button:focus {
 .modal-overlay.hidden {
   display: none;
 }
+#appDialogOverlay {
+  z-index: 80;
+}
 .modal-card {
   background: var(--color-surface);
   border-radius: 16px;
@@ -752,10 +805,603 @@ button:focus {
 .modal-card-wide {
   max-width: 1200px;
 }
+.modal-card-vacancy {
+  width: min(88vw, 820px, 90vh);
+  max-width: none;
+  height: min(88vw, 820px, 90vh);
+  display: flex;
+  flex-direction: column;
+}
+#vacancyDetailModalBody {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+}
+@media (max-width: 640px) {
+  .modal-card-vacancy {
+    width: 100%;
+    height: 90vh;
+  }
+}
 .app-dialog-danger {
   background: #A93226 !important;
   color: #fff !important;
 }
 .app-dialog-danger:hover {
   background: #87281F !important;
+}
+
+/* ============ PORTAL-WIDE VISUAL SYSTEM ============ */
+:root {
+  --color-primary: #12376f;
+  --color-primary-dark: #0a214c;
+  --color-accent: #bb2338;
+  --color-accent-dark: #941b2c;
+  --color-bg: #f3f6fa;
+  --color-text: #1b293d;
+  --color-muted: #637083;
+  --color-border: #e0e6ee;
+  --portal-shadow-sm: 0 2px 8px rgba(20, 42, 75, 0.045);
+  --portal-shadow-md: 0 12px 32px rgba(20, 42, 75, 0.09);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  line-height: 1.55;
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(226, 234, 246, 0.42), transparent 34rem),
+    var(--color-bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+.gov-strip {
+  min-height: 30px;
+  background: #091a3b;
+  font-size: 10px;
+}
+
+.flag-rule {
+  height: 3px;
+  background: linear-gradient(90deg, #12376f 0 48%, #fff 48% 51%, #bb2338 51% 100%);
+}
+
+.portal-header {
+  box-shadow: 0 4px 18px rgba(15, 35, 67, 0.055);
+}
+
+.portal-header-inner {
+  min-height: 76px;
+}
+
+.portal-header .brand-divider {
+  opacity: 0.7;
+}
+
+.portal-header .nav-link {
+  color: #43536a;
+}
+
+.portal-header .nav-link.active,
+.portal-header .nav-link:hover {
+  color: var(--color-primary);
+}
+
+.portal-hero {
+  background:
+    radial-gradient(ellipse at 80% 10%, rgba(77, 116, 179, 0.34), transparent 35%),
+    linear-gradient(135deg, #12376f 0%, #0a214c 68%, #102d5c 100%) !important;
+}
+
+.portal-hero-content {
+  padding-top: clamp(3.25rem, 7vw, 5.5rem);
+  padding-bottom: clamp(3rem, 6vw, 4.5rem);
+}
+
+.portal-hero-content h1 {
+  letter-spacing: -0.035em;
+}
+
+.portal-hero-content > p:not(.uppercase) {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.portal-hero-content form {
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(2, 14, 37, 0.22);
+}
+
+.portal-stat-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.portal-stat-panel > .w-px,
+.portal-stat-panel > .hidden {
+  display: none !important;
+}
+
+.portal-stat-panel > div:not(.pulse-tick) {
+  min-width: 0;
+}
+
+.portal-stat-panel > div:not(.pulse-tick) > div:first-child {
+  font-size: 1.8rem;
+}
+
+.portal-section,
+.portal-page-shell {
+  padding-top: clamp(2.5rem, 5vw, 4rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.portal-section-heading {
+  gap: 1rem;
+}
+
+.portal-section-heading h2,
+#view-jobs h1,
+#view-about h1,
+#dashContent > h1 {
+  letter-spacing: -0.025em;
+}
+
+.portal-section-heading h2,
+#view-about h2 {
+  color: var(--color-text);
+}
+
+#view-home > div.border-y {
+  background: linear-gradient(180deg, #fff, #f8fafd) !important;
+}
+
+#view-home > div.border-y .grid > div {
+  padding: 1.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+#view-home .card,
+#view-about .card {
+  border-radius: 18px;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+#featuredJobsGrid > button.card,
+#jobsListGrid > button.card {
+  min-height: 190px;
+  border-radius: 18px;
+  padding: 1.35rem;
+  box-shadow: var(--portal-shadow-sm);
+  text-align: left;
+}
+
+#featuredJobsGrid > button.card:hover,
+#jobsListGrid > button.card:hover {
+  border-color: #b8c8df;
+  box-shadow: var(--portal-shadow-md);
+}
+
+#view-jobs .portal-filter-panel {
+  align-self: start;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+#view-jobs #jobsCountLabel {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.portal-auth-shell {
+  max-width: 34rem;
+}
+
+.portal-auth-card {
+  border-radius: 20px;
+  padding: clamp(1.35rem, 4vw, 2.25rem);
+  box-shadow: 0 18px 52px rgba(18, 55, 111, 0.09);
+}
+
+.portal-auth-card h1 {
+  letter-spacing: -0.03em;
+}
+
+.portal-dashboard-shell {
+  grid-template-columns: 248px minmax(0, 1fr) !important;
+  align-items: start;
+  gap: 1.75rem;
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+}
+
+.portal-dashboard-sidebar {
+  position: sticky;
+  top: 6rem;
+  min-width: 0;
+}
+
+.portal-profile-card {
+  padding: 1.35rem 1rem;
+  border-radius: 18px;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+.portal-profile-card #dashAvatarInitial {
+  width: 3.75rem;
+  height: 3.75rem;
+  box-shadow: 0 0 0 4px #edf2f9;
+}
+
+.portal-dash-nav {
+  border-radius: 18px;
+  padding: 0.65rem;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+.portal-dash-nav .dash-nav-menu {
+  gap: 0.3rem;
+}
+
+.portal-dash-nav .dash-tab-btn {
+  min-height: 2.65rem;
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.portal-dash-nav .dash-tab-btn:not([style*="color: rgb(255, 255, 255)"]):hover {
+  background: #f1f5fa !important;
+  color: var(--color-primary) !important;
+}
+
+.portal-vacancy-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.portal-vacancy-grid > article {
+  min-width: 0;
+}
+
+.portal-vacancy-grid > article > .flex:first-child,
+.portal-vacancy-grid > article > .flex:last-child {
+  flex-wrap: wrap;
+}
+
+@media (min-width: 640px) {
+  .portal-vacancy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .portal-vacancy-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.portal-inventory-stat {
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.portal-inventory-stat:hover,
+.portal-inventory-stat:focus-visible,
+.portal-inventory-stat.is-selected {
+  border-color: #9db3d1;
+  background: #f8faff;
+  box-shadow: 0 0 0 2px rgba(18, 55, 111, 0.1);
+}
+
+.portal-inventory-stat:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.portal-inventory-reset.is-selected {
+  box-shadow: 0 0 0 2px rgba(18, 55, 111, 0.18);
+}
+
+.portal-inventory-reset:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.admin-overview-stat {
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.admin-overview-stat:hover,
+.admin-overview-stat:focus-visible {
+  border-color: #9db3d1;
+  background: #f8faff;
+  box-shadow: 0 0 0 2px rgba(18, 55, 111, 0.1);
+  transform: translateY(-1px);
+}
+
+.admin-overview-stat:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+#dashContent {
+  min-height: 60vh;
+  padding: clamp(0rem, 1vw, 0.5rem);
+  border-radius: 20px;
+}
+
+#dashContent > h1 {
+  font-size: clamp(1.5rem, 2.2vw, 1.9rem);
+  line-height: 1.2;
+}
+
+#dashContent .card {
+  border-radius: 16px;
+  box-shadow: var(--portal-shadow-sm);
+}
+
+#dashContent .card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--portal-shadow-sm);
+}
+
+#dashContent button.btn-primary,
+#dashContent button.btn-outline,
+#dashContent button[class*="border"] {
+  min-height: 2.45rem;
+}
+
+.card {
+  border-color: var(--color-border);
+  box-shadow: var(--portal-shadow-sm);
+}
+
+.card:hover {
+  transform: none;
+  box-shadow: var(--portal-shadow-md);
+}
+
+button.card:hover {
+  transform: translateY(-2px);
+}
+
+.btn-primary,
+.btn-accent,
+.btn-outline {
+  min-height: 2.5rem;
+  border-radius: 10px;
+}
+
+.btn-primary {
+  box-shadow: 0 2px 6px rgba(18, 55, 111, 0.08);
+}
+
+.btn-outline {
+  border-width: 1px;
+  background: #fff;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea {
+  min-height: 2.65rem;
+  border-radius: 10px;
+  border-color: var(--color-border);
+  background-color: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 3px solid rgba(18, 55, 111, 0.14);
+  outline-offset: 0;
+  border-color: #7e9bc3 !important;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-primary);
+}
+
+.modal-card {
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-top: 4px solid var(--color-accent);
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(7, 21, 48, 0.28);
+}
+
+.report-table th {
+  background: #f1f5fa;
+}
+
+.portal-footer {
+  margin-top: 0;
+  border-top: 0;
+  background:
+    radial-gradient(ellipse at 85% 0%, rgba(58, 91, 145, 0.3), transparent 34%),
+    #0a214c !important;
+}
+
+@media (min-width: 768px) {
+  #view-jobs .portal-filter-panel {
+    position: sticky;
+    top: 6rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .gov-strip > div {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .gov-strip > div > span:last-child {
+    display: none;
+  }
+
+  .portal-header-inner {
+    min-height: 66px;
+    height: 66px;
+    gap: 0.5rem;
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .portal-header-inner > button:first-child {
+    gap: 0.55rem;
+  }
+
+  .portal-header-inner > button:first-child img:first-child {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .portal-header-inner > button:first-child img:nth-of-type(2) {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .portal-header-inner > button:first-child .font-poster {
+    font-size: 0.9rem;
+  }
+
+  .portal-header-inner > button:first-child .leading-tight > div:last-child {
+    font-size: 8px;
+    letter-spacing: 0.06em;
+  }
+
+  .portal-stat-panel {
+    gap: 0.7rem;
+    padding: 1rem;
+  }
+
+  .portal-stat-panel > div:not(.pulse-tick) > div:first-child {
+    font-size: 1.45rem;
+  }
+
+  .portal-stat-panel > div:not(.pulse-tick) > div:last-child {
+    font-size: 9px;
+    line-height: 1.35;
+  }
+
+  .portal-section-heading {
+    align-items: flex-start;
+  }
+
+  .portal-section-heading > button {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.72rem;
+  }
+
+  #view-home > div.border-y .grid > div {
+    padding: 1.2rem 0.85rem;
+  }
+
+  #view-dashboard > .portal-dashboard-shell {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.85rem;
+    padding: 1rem 0.9rem 2rem;
+  }
+
+  .portal-dashboard-sidebar {
+    position: relative;
+    top: auto;
+  }
+
+  .portal-profile-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    justify-items: start;
+    column-gap: 0.85rem;
+    padding: 0.75rem 1rem;
+    text-align: left;
+  }
+
+  .portal-profile-card > button {
+    grid-row: span 2;
+    margin: 0;
+  }
+
+  .portal-profile-card > button > span:first-child {
+    width: 2.8rem;
+    height: 2.8rem;
+  }
+
+  .portal-profile-card > button > span:last-child {
+    display: none;
+  }
+
+  #dashNav {
+    justify-content: stretch;
+    padding: 0.4rem;
+    border-radius: 14px;
+  }
+
+  #dashNav .dash-nav-trigger {
+    width: 100%;
+    min-height: 2.7rem;
+  }
+
+  #dashContent {
+    min-height: 50vh;
+    padding: 0.25rem 0;
+  }
+
+  .portal-auth-shell,
+  .portal-page-shell {
+    padding-top: 1.75rem;
+    padding-bottom: 2.25rem;
+  }
+
+  .portal-auth-card {
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .portal-stat-panel {
+    gap: 0.45rem;
+  }
+
+  .portal-stat-panel > div:not(.pulse-tick) > div:last-child {
+    letter-spacing: -0.02em;
+  }
+
+  #featuredJobsGrid > button.card,
+  #jobsListGrid > button.card {
+    min-height: 0;
+    padding: 1.1rem;
+  }
 }

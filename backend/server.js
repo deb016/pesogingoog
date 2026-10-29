@@ -54,12 +54,20 @@ const UNVERIFIED_ACCOUNT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 hour, Section 10
 const VERIFICATION_STATUSES = ["draft", "pending_verification", "returned_for_completion", "verified", "rejected", "suspended"];
 const VACANCY_STATUSES = ["draft", "pending_approval", "approved", "returned_for_completion", "rejected", "expired", "closed"];
+const PUBLIC_VACANCY_VALIDITY_SQL = `
+  LOWER(TRIM(COALESCE(title, ''))) NOT IN ('', 'none', 'null', 'undefined')
+  AND LOWER(TRIM(COALESCE(category, ''))) NOT IN ('', 'none', 'null', 'undefined')
+`;
 const locationSearchCache = new Map();
 const locationReverseCache = new Map();
 let nominatimQueue = Promise.resolve();
 
 function isStrongPassword(password) {
   return typeof password === "string" && PASSWORD_REGEX.test(password);
+}
+function isMissingVacancyValue(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return !normalized || ["none", "null", "undefined"].includes(normalized);
 }
 let lastNominatimRequestAt = 0;
 
@@ -355,6 +363,9 @@ function serializeVacancy(row) {
     type: row.type,
     slots: row.slots,
     posted: row.posted,
+    postedAt: ["approved", "expired", "closed"].includes(row.status) && row.approved_at
+      ? row.approved_at
+      : row.posted,
     qualification: JSON.parse(row.qualification),
     description: row.description,
     minEducationLevel: row.min_education_level,
@@ -395,9 +406,9 @@ async function getDailyReport(date) {
   const end = endDate.toISOString();
   const [vacancies, seekers] = await Promise.all([
     db.all(`
-      SELECT title, employer, location, slots, posted, status
+      SELECT title, employer, location, slots, posted, approved_at, status
       FROM vacancies
-      WHERE LEFT(posted, 10) = ?
+      WHERE LEFT(CASE WHEN status IN ('approved', 'expired', 'closed') AND approved_at != '' THEN approved_at ELSE posted END, 10) = ?
       ORDER BY LOWER(title), id
     `, [date]),
     db.all(`
@@ -415,7 +426,9 @@ async function getDailyReport(date) {
       employer: row.employer || "",
       location: row.location || "",
       slots: Number(row.slots) || 0,
-      posted: row.posted || "",
+      posted: ["approved", "expired", "closed"].includes(row.status) && row.approved_at
+        ? row.approved_at
+        : row.posted || "",
       status: row.status || "",
     })),
     seekers: seekers.map((row) => ({
@@ -429,6 +442,16 @@ async function getDailyReport(date) {
 }
 function pdfText(value) {
   return String(value ?? "").replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\xff]/g, " ");
+}
+function formatReportPostedAt(value) {
+  const hasTime = /[T ]\d{2}:\d{2}/.test(value);
+  const date = new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value);
+  if (!Number.isFinite(date.getTime())) return value;
+  const options = hasTime
+    ? { weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }
+    : { weekday: "short", year: "numeric", month: "short", day: "numeric", timeZone: "UTC" };
+  const formatted = new Intl.DateTimeFormat("en-PH", options).format(date);
+  return hasTime ? formatted : `${formatted} (time unavailable)`;
 }
 function buildDailyReportPdf(report, reportType) {
   return new Promise((resolve, reject) => {
@@ -499,7 +522,7 @@ function buildDailyReportPdf(report, reportType) {
       { label: "Employer", width: 145, value: (row) => row.employer },
       { label: "Location", width: 150, value: (row) => row.location },
       { label: "Positions", width: 58, value: (row) => row.slots },
-      { label: "Date posted", width: 92, value: (row) => row.posted },
+      { label: "Date and time posted", width: 92, value: (row) => formatReportPostedAt(row.posted) },
       { label: "Status", width: 100, value: (row) => row.status },
     ];
     const seekerColumns = [
@@ -933,7 +956,7 @@ route("GET", "/api/public/stats", async (req, res) => {
   monthStart.setHours(0, 0, 0, 0);
 
   const [openVacancies, partnerEmployers, placementsThisMonth] = await Promise.all([
-    db.get("SELECT COUNT(*) AS count FROM vacancies WHERE status = 'approved'"),
+    db.get(`SELECT COUNT(*) AS count FROM vacancies WHERE status = 'approved' AND ${PUBLIC_VACANCY_VALIDITY_SQL}`),
     db.get("SELECT COUNT(*) AS count FROM users WHERE role = 'employer' AND verification_status = 'verified'"),
     db.get("SELECT COUNT(*) AS count FROM applications WHERE status = 'hired' AND date_applied >= ?", [monthStart.toISOString()]),
   ]);
@@ -951,13 +974,13 @@ route("GET", "/api/public/stats", async (req, res) => {
  * job seekers, per Section 9 (employer vacancies require Staff approval first). ---- */
 route("GET", "/api/vacancies", async (req, res) => {
   await sweepExpiredVacancies();
-  const rows = (await db.all("SELECT * FROM vacancies WHERE status = 'approved' ORDER BY LOWER(title), id", []));
+  const rows = await db.all(`SELECT * FROM vacancies WHERE status = 'approved' AND ${PUBLIC_VACANCY_VALIDITY_SQL} ORDER BY LOWER(title), id`, []);
   send(res, 200, { vacancies: rows.map(serializeVacancy) });
 });
 
 route("GET", "/api/vacancies/:id", async (req, res, params) => {
   await sweepExpiredVacancies();
-  const row = (await db.get("SELECT * FROM vacancies WHERE id = ? AND status = 'approved'", [Number(params.id)]));
+  const row = await db.get(`SELECT * FROM vacancies WHERE id = ? AND status = 'approved' AND ${PUBLIC_VACANCY_VALIDITY_SQL}`, [Number(params.id)]);
   if (!row) return send(res, 404, { error: "Vacancy not found." });
   send(res, 200, { vacancy: serializeVacancy(row) });
 });
@@ -1316,7 +1339,8 @@ route("POST", "/api/employer/vacancies", async (req, res) => {
   }
   const b = await readJsonBody(req);
   const isDraft = !!b.isDraft;
-  if (!b.title || !String(b.title).trim()) return send(res, 400, { error: "Position Title is required." });
+  if (isMissingVacancyValue(b.title)) return send(res, 400, { error: "Enter a valid Position Title." });
+  const title = String(b.title).trim();
   const expiryDays = b.expiryDays === undefined ? 5 : Number(b.expiryDays);
   if (!isValidVacancyExpiryDays(expiryDays)) {
     return send(res, 400, { error: "Choose a vacancy expiry period between 2 and 5 days." });
@@ -1331,7 +1355,7 @@ route("POST", "/api/employer/vacancies", async (req, res) => {
   if (!isDraft) {
     const required = ["title", "category", "location", "salary", "type", "slots", "description", "minEducationLevel", "minExperienceYears"];
     for (const f of required) {
-      if (b[f] === undefined || b[f] === null || String(b[f]).trim() === "") {
+      if (isMissingVacancyValue(b[f])) {
         return send(res, 400, { error: `Missing required field: ${f}` });
       }
     }
@@ -1344,8 +1368,8 @@ route("POST", "/api/employer/vacancies", async (req, res) => {
        work_experience, other_qualifications, accepts_pwd, pwd_types, accepts_returning_ofw,
        course_shs_strand, license, certification, eligibility, language_dialect, valid_until, expiry_days)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [b.title, user.employer_business_name || user.employer_company_name || user.name, b.category || "", b.location || "",
-    b.salary || "", b.type || "", Number(b.slots) || 1, today(), JSON.stringify(b.qualification || []), b.description || "",
+  `, [title, user.employer_business_name || user.employer_company_name || user.name, b.category || "", b.location || "",
+    b.salary || "", b.type || "", Number(b.slots) || 1, nowIso(), JSON.stringify(b.qualification || []), b.description || "",
     b.minEducationLevel || "", JSON.stringify(b.requiredSkills || []), Number(b.minExperienceYears) || 0, user.email,
     isDraft ? "draft" : "pending_approval", validCoordinates ? Number(b.latitude) : null, validCoordinates ? Number(b.longitude) : null,
     b.workExperience || "", b.otherQualifications || "", b.acceptsPwd || "", JSON.stringify(b.pwdTypes || []),
@@ -1366,6 +1390,8 @@ route("PUT", "/api/employer/vacancies/:id", async (req, res, params) => {
     return send(res, 423, { error: "This vacancy can't be edited in its current status." });
   }
   const b = await readJsonBody(req);
+  const title = b.title ?? vac.title;
+  if (isMissingVacancyValue(title)) return send(res, 400, { error: "Enter a valid Position Title." });
   const expiryDays = b.expiryDays === undefined
     ? (isValidVacancyExpiryDays(vac.expiry_days) ? Number(vac.expiry_days) : 5)
     : Number(b.expiryDays);
@@ -1388,7 +1414,7 @@ route("PUT", "/api/employer/vacancies/:id", async (req, res, params) => {
       work_experience=?, other_qualifications=?, accepts_pwd=?, pwd_types=?, accepts_returning_ofw=?,
       course_shs_strand=?, license=?, certification=?, eligibility=?, language_dialect=?, valid_until=?, expiry_days=?
     WHERE id = ?
-  `, [b.title ?? vac.title, b.category ?? vac.category, b.location ?? vac.location, b.salary ?? vac.salary,
+  `, [String(title).trim(), b.category ?? vac.category, b.location ?? vac.location, b.salary ?? vac.salary,
     b.type ?? vac.type, Number(b.slots) || vac.slots, JSON.stringify(b.qualification || JSON.parse(vac.qualification)),
     b.description ?? vac.description, b.minEducationLevel ?? vac.min_education_level,
     JSON.stringify(b.requiredSkills || JSON.parse(vac.required_skills)), Number(b.minExperienceYears) || vac.min_experience_years,
@@ -1416,7 +1442,7 @@ route("POST", "/api/employer/vacancies/:id/submit", async (req, res, params) => 
   const required = ["title", "category", "location", "salary", "type", "description"];
   for (const f of required) {
     const col = { title: "title", category: "category", location: "location", salary: "salary", type: "type", description: "description" }[f];
-    if (!vac[col] || !String(vac[col]).trim()) return send(res, 422, { error: `Please complete "${f}" before submitting this vacancy for approval.` });
+    if (isMissingVacancyValue(vac[col])) return send(res, 422, { error: `Please complete "${f}" before submitting this vacancy for approval.` });
   }
   if (vac.latitude === null || vac.latitude === undefined || vac.longitude === null || vac.longitude === undefined
     || !Number.isFinite(Number(vac.latitude)) || !Number.isFinite(Number(vac.longitude))
@@ -1426,7 +1452,7 @@ route("POST", "/api/employer/vacancies/:id/submit", async (req, res, params) => 
   }
   const expiryDays = Number(vac.expiry_days) || 5;
   if (!isValidVacancyExpiryDays(expiryDays)) return send(res, 422, { error: "The vacancy expiry period must be between 2 and 5 days before submission." });
-  (await db.run("UPDATE vacancies SET status = 'pending_approval', remarks = '', posted = ?, valid_until = ? WHERE id = ?", [today(), vacancyExpiryDate(expiryDays), vac.id]));
+  (await db.run("UPDATE vacancies SET status = 'pending_approval', remarks = '', posted = ?, valid_until = ? WHERE id = ?", [nowIso(), vacancyExpiryDate(expiryDays), vac.id]));
   await logActivity({ userEmail: user.email, userRole: "employer", action: vac.status === "draft" ? "job_vacancy_submission" : "job_vacancy_resubmission", relatedRecord: `vacancy #${vac.id}`, performedBy: user.email, performedByRole: "employer" });
   await notify(user.email, `Your job vacancy "${vac.title}" has been submitted and is now pending PESO approval.`);
   const row = (await db.get("SELECT * FROM vacancies WHERE id = ?", [vac.id]));
@@ -1447,6 +1473,65 @@ route("POST", "/api/employer/vacancies/:id/close", async (req, res, params) => {
   await logActivity({ userEmail: user.email, userRole: "employer", action: "job_vacancy_closure", relatedRecord: `vacancy #${vac.id}`, performedBy: user.email, performedByRole: "employer" });
   const row = (await db.get("SELECT * FROM vacancies WHERE id = ?", [vac.id]));
   send(res, 200, { vacancy: serializeVacancy(row) });
+});
+
+route("POST", "/api/employer/vacancies/:id/repost", async (req, res, params) => {
+  const user = await requireRole(req, res, ["employer"]);
+  if (!user) return;
+  const vac = await db.get("SELECT * FROM vacancies WHERE id = ? AND employer_email = ?", [Number(params.id), user.email]);
+  if (!vac) return send(res, 404, { error: "Vacancy not found." });
+  if (!["expired", "closed"].includes(vac.status)) {
+    return send(res, 409, { error: "Only a closed or expired vacancy can be reposted." });
+  }
+  const required = ["title", "category", "location", "salary", "type", "description"];
+  for (const field of required) {
+    if (isMissingVacancyValue(vac[field])) {
+      return send(res, 422, { error: `This vacancy needs a valid ${field} before it can be reposted.` });
+    }
+  }
+  if (vac.latitude === null || vac.latitude === undefined || vac.longitude === null || vac.longitude === undefined
+    || !Number.isFinite(Number(vac.latitude)) || !Number.isFinite(Number(vac.longitude))
+    || Number(vac.latitude) < -90 || Number(vac.latitude) > 90
+    || Number(vac.longitude) < -180 || Number(vac.longitude) > 180) {
+    return send(res, 422, { error: "This vacancy needs a valid map location before it can be reposted." });
+  }
+  const expiryDays = Number(vac.expiry_days);
+  if (!isValidVacancyExpiryDays(expiryDays)) {
+    return send(res, 422, { error: "Choose a vacancy duration between 2 and 5 days before reposting." });
+  }
+
+  const created = await db.run(`
+    INSERT INTO vacancies (
+      title, employer, category, location, salary, type, slots, posted, qualification,
+      description, min_education_level, required_skills, min_experience_years,
+      employer_email, status, latitude, longitude, work_experience, other_qualifications,
+      accepts_pwd, pwd_types, accepts_returning_ofw, course_shs_strand, license,
+      certification, eligibility, language_dialect, valid_until, expiry_days
+    )
+    SELECT
+      title, employer, category, location, salary, type, slots, ?, qualification,
+      description, min_education_level, required_skills, min_experience_years,
+      employer_email, 'pending_approval', latitude, longitude, work_experience,
+      other_qualifications, accepts_pwd, pwd_types, accepts_returning_ofw,
+      course_shs_strand, license, certification, eligibility, language_dialect, ?, ?
+    FROM vacancies
+    WHERE id = ? AND employer_email = ? AND status IN ('expired', 'closed')
+  `, [nowIso(), vacancyExpiryDate(expiryDays), expiryDays, vac.id, user.email]);
+  if (!created.changes) return send(res, 409, { error: "This vacancy is no longer available to repost." });
+
+  const newVacancyId = created.lastInsertRowid;
+  await logActivity({
+    userEmail: user.email,
+    userRole: "employer",
+    action: "job_vacancy_reposted",
+    relatedRecord: `vacancy #${newVacancyId}`,
+    performedBy: user.email,
+    performedByRole: "employer",
+    remarks: `Reposted from vacancy #${vac.id}`,
+  });
+  await notify(user.email, `Your reposted job vacancy "${vac.title}" has been submitted as a new listing and is pending PESO approval.`);
+  const row = await db.get("SELECT * FROM vacancies WHERE id = ?", [newVacancyId]);
+  send(res, 201, { vacancy: serializeVacancy(row) });
 });
 
 /** Section 27/28: Job Seekers apply DIRECTLY to Employers — there is no PESO Staff
@@ -1977,9 +2062,13 @@ route("POST", "/api/staff/vacancies/:id/approve", async (req, res, params) => {
   const vac = (await db.get("SELECT * FROM vacancies WHERE id = ?", [Number(params.id)]));
   if (!vac) return send(res, 404, { error: "Vacancy not found." });
   if (vac.status !== "pending_approval") return send(res, 409, { error: "This vacancy is not pending approval." });
+  if (isMissingVacancyValue(vac.title) || isMissingVacancyValue(vac.category)) {
+    return send(res, 422, { error: "This vacancy is missing a valid title or category. Return it to the employer for correction before approval." });
+  }
   const expiryDays = Number(vac.expiry_days) || 5;
   if (!isValidVacancyExpiryDays(expiryDays)) return send(res, 422, { error: "The vacancy expiry period must be between 2 and 5 days before approval." });
-  (await db.run("UPDATE vacancies SET status = 'approved', remarks = '', approved_by = ?, approved_at = ?, posted = ?, valid_until = ? WHERE id = ?", [staffUser.email, nowIso(), today(), vacancyExpiryDate(expiryDays), vac.id]));
+  const approvedAt = nowIso();
+  (await db.run("UPDATE vacancies SET status = 'approved', remarks = '', approved_by = ?, approved_at = ?, posted = ?, valid_until = ? WHERE id = ?", [staffUser.email, approvedAt, approvedAt, vacancyExpiryDate(expiryDays), vac.id]));
   await logActivity({ userEmail: vac.employer_email, userRole: "employer", action: "job_vacancy_approval", relatedRecord: `vacancy #${vac.id}`, performedBy: staffUser.email, performedByRole: staffUser.role });
   if (vac.employer_email) await notify(vac.employer_email, `Your job vacancy "${vac.title}" has been approved by PESO Staff and is now visible to job seekers.`);
   if (vac.employer_email) await sendVacancyReviewEmail({ to: vac.employer_email, vacancyTitle: vac.title, status: "approved" });
@@ -2031,7 +2120,7 @@ route("POST", "/api/staff/vacancies/:id/reject", async (req, res, params) => {
  * when the Seeker's computed Match Score meets the same threshold used on job listings. ---- */
 route("GET", "/api/staff/refer/candidates/:vacancyId", async (req, res, params) => {
   if (!await requireStaffOrAdmin(req, res)) return;
-  const vacancy = (await db.get("SELECT * FROM vacancies WHERE id = ? AND status = 'approved'", [Number(params.vacancyId)]));
+  const vacancy = await db.get(`SELECT * FROM vacancies WHERE id = ? AND status = 'approved' AND ${PUBLIC_VACANCY_VALIDITY_SQL}`, [Number(params.vacancyId)]);
   if (!vacancy) return send(res, 404, { error: "Vacancy not found or not currently approved." });
 
   const seekers = (await db.all("SELECT * FROM users WHERE role = 'job_seeker' AND verification_status = 'verified'", []));
@@ -2076,7 +2165,7 @@ route("POST", "/api/staff/refer", async (req, res) => {
   if (!isProfileComplete(serializeUser(seeker), docCount)) {
     return send(res, 409, { error: "This Job Seeker's profile is incomplete." });
   }
-  const vacancy = (await db.get("SELECT * FROM vacancies WHERE id = ? AND status = 'approved'", [vacancyId]));
+  const vacancy = await db.get(`SELECT * FROM vacancies WHERE id = ? AND status = 'approved' AND ${PUBLIC_VACANCY_VALIDITY_SQL}`, [vacancyId]);
   if (!vacancy) return send(res, 404, { error: "Vacancy not found or not currently approved." });
 
   const dup = (await db.get("SELECT id FROM applications WHERE email = ? AND vacancy_id = ?", [seekerEmail, vacancyId]));

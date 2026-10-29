@@ -16,6 +16,7 @@ export interface Vacancy {
   type: string;
   slots: number;
   posted: string;
+  postedAt?: string;
   qualification: string[];
   description: string;
   /** Structured fields used by the match-score engine (in addition to the free-text qualification list shown to users) */

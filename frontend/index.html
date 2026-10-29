@@ -208,7 +208,7 @@
 
       <!-- ============ VACANCY DETAILS MODAL ============ -->
       <div id="vacancyDetailOverlay" class="modal-overlay hidden" onclick="if(event.target===this) closeVacancyDetailModal()">
-        <div class="modal-card modal-card-wide p-5 fade-in">
+        <div class="modal-card modal-card-vacancy p-5 fade-in">
           <div class="flex items-center justify-between mb-3 gap-3">
             <h3 class="font-display text-base font-semibold truncate" id="vacancyDetailModalTitle">Vacancy Details</h3>
             <button onclick="closeVacancyDetailModal()" class="text-sm font-semibold px-2 py-1 flex-shrink-0" style="color:var(--color-muted)">&times; Close</button>
@@ -227,8 +227,8 @@
         </div>
       </div>
       <div class="flag-rule"></div>
-      <header class="sticky top-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur border-b" style="border-color:var(--color-border)">
-        <div class="max-w-7xl mx-auto px-5 h-20 flex items-center justify-between gap-4 relative">
+      <header class="portal-header sticky top-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur border-b" style="border-color:var(--color-border)">
+        <div class="portal-header-inner max-w-7xl mx-auto px-5 h-20 flex items-center justify-between gap-4 relative">
           <button onclick="nav('home')" class="flex items-center gap-3 group min-w-0">
             <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-11 h-11 flex-shrink-0 seal-ring" />
             <div class="brand-divider hidden sm:block"></div>
@@ -278,9 +278,9 @@
       <!-- ============ HOME VIEW ============ -->
       <section id="view-home" class="view active">
         <!-- HERO -->
-        <div class="relative overflow-hidden" style="background:linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)">
+        <div class="portal-hero relative overflow-hidden" style="background:linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)">
           <div class="hero-diagonal"><span class="shard-gold"></span><span class="shard-red"></span><span class="shard-white"></span></div>
-          <div class="relative max-w-5xl mx-auto px-5 pt-16 pb-16 text-center text-white">
+          <div class="portal-hero-content relative max-w-5xl mx-auto px-5 pt-16 pb-16 text-center text-white">
             <div class="flex items-center justify-center gap-4 mb-6">
               <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-14 h-14 seal-ring" />
               <img src="/peso-logo.png" alt="Public Employment Service Office Logo" class="w-[4.5rem] h-[4.5rem]" />
@@ -296,7 +296,7 @@
           </div>
           <!-- SIGNATURE: employment pulse strip -->
           <div class="relative max-w-5xl mx-auto px-5 pb-8">
-            <div class="flex items-end gap-4 bg-white/10 rounded-xl px-6 py-5 backdrop-blur-sm">
+            <div class="portal-stat-panel flex items-end gap-4 bg-white/10 rounded-xl px-6 py-5 backdrop-blur-sm">
               <div>
                 <div class="text-2xl font-display font-bold text-white" id="statVacancies">8</div>
                 <div class="text-[11px] uppercase tracking-wide text-white/70">Open Vacancies</div>
@@ -326,8 +326,8 @@
         </div>
 
         <!-- FEATURED JOBS -->
-        <div class="max-w-7xl mx-auto px-5 py-16">
-          <div class="flex items-end justify-between mb-8">
+        <div class="portal-section max-w-7xl mx-auto px-5 py-16">
+          <div class="portal-section-heading flex items-end justify-between mb-8">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-accent-dark)">Fresh openings</p>
               <h2 class="font-display text-2xl font-semibold">Featured Vacancies</h2>
@@ -339,7 +339,7 @@
 
         <!-- HOW IT WORKS -->
         <div class="border-y" style="background:var(--color-surface); border-color:var(--color-border)">
-          <div class="max-w-6xl mx-auto px-5 py-16">
+          <div class="portal-section max-w-6xl mx-auto px-5 py-16">
             <h2 class="font-display text-2xl font-semibold text-center mb-10">How the process works</h2>
             <div class="grid md:grid-cols-4 gap-6">
               <div class="text-center px-3">
@@ -369,11 +369,11 @@
 
       <!-- ============ JOBS LISTING VIEW ============ -->
       <section id="view-jobs" class="view">
-        <div class="max-w-7xl mx-auto px-5 py-10">
+        <div class="portal-page-shell max-w-7xl mx-auto px-5 py-10">
           <h1 class="font-display text-2xl font-semibold mb-1" id="jobsPageHeading">Find Jobs</h1>
           <p class="text-sm mb-6" style="color:var(--color-muted)">All vacancies below are encoded by PESO staff from walk-in employers and reviewed for accuracy.</p>
           <div class="grid md:grid-cols-[240px_1fr] gap-8">
-            <aside class="space-y-6">
+            <aside class="portal-filter-panel space-y-6">
               <div>
                 <label for="jobSearchInput" class="text-xs font-semibold uppercase tracking-wide block mb-2" style="color:var(--color-muted)">Search</label>
                 <input id="jobSearchInput" oninput="jobsFilterChanged()" type="text" placeholder="Job title or keyword" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--color-border)" />
@@ -404,12 +404,12 @@
 
       <!-- ============ JOB DETAIL VIEW ============ -->
       <section id="view-jobdetail" class="view">
-        <div class="max-w-4xl mx-auto px-5 py-10" id="jobDetailContent"></div>
+        <div class="portal-page-shell max-w-4xl mx-auto px-5 py-10" id="jobDetailContent"></div>
       </section>
 
       <!-- ============ ABOUT VIEW ============ -->
       <section id="view-about" class="view">
-        <div class="max-w-4xl mx-auto px-5 py-16">
+        <div class="portal-page-shell max-w-4xl mx-auto px-5 py-16">
           <p class="uppercase tracking-[0.2em] text-xs font-semibold mb-3" style="color:var(--color-accent)">Public Employment Service Office &middot; Gingoog City</p>
           <h1 class="font-display text-3xl font-semibold mb-8">About PESO Gingoog City</h1>
 
@@ -458,8 +458,8 @@
 
       <!-- ============ LOGIN VIEW ============ -->
       <section id="view-login" class="view">
-        <div class="max-w-md mx-auto px-5 py-16">
-          <div class="card rounded-xl p-8 fade-in">
+        <div class="portal-auth-shell max-w-md mx-auto px-5 py-16">
+          <div class="portal-auth-card card rounded-xl p-8 fade-in">
             <h1 class="font-display text-2xl font-semibold mb-1">Welcome back</h1>
             <p class="text-sm mb-6" style="color:var(--color-muted)">Sign in with your email or staff/admin username. Your account role and access are applied automatically.</p>
             <form onsubmit="return doLogin(event)" class="space-y-4">
@@ -489,8 +489,8 @@
 
       <!-- ============ REGISTER VIEW ============ -->
       <section id="view-register" class="view">
-        <div class="max-w-md mx-auto px-5 py-16">
-          <div class="card rounded-xl p-8 fade-in">
+        <div class="portal-auth-shell max-w-md mx-auto px-5 py-16">
+          <div class="portal-auth-card card rounded-xl p-8 fade-in">
             <h1 class="font-display text-2xl font-semibold mb-1">Create your account</h1>
             <p class="text-sm mb-6" style="color:var(--color-muted)">Registration is free and only takes a minute. Staff and Admin accounts are provisioned separately by PESO — this form is for Job Seekers and Employers.</p>
             <div class="mb-5">
@@ -557,8 +557,8 @@
 
       <!-- ============ FORGOT PASSWORD VIEW ============ -->
       <section id="view-forgot-password" class="view">
-        <div class="max-w-md mx-auto px-5 py-16">
-          <div class="card rounded-xl p-8 fade-in">
+        <div class="portal-auth-shell max-w-md mx-auto px-5 py-16">
+          <div class="portal-auth-card card rounded-xl p-8 fade-in">
             <h1 class="font-display text-2xl font-semibold mb-1">Forgot your password?</h1>
             <p class="text-sm mb-6" style="color:var(--color-muted)">Enter your registered Gmail address and we'll email you a secure link to reset your password.</p>
             <form onsubmit="return doForgotPassword(event)" class="space-y-4">
@@ -610,9 +610,9 @@
 
       <!-- ============ DASHBOARD VIEW ============ -->
       <section id="view-dashboard" class="view">
-        <div class="max-w-7xl mx-auto px-5 py-8 grid md:grid-cols-[220px_1fr] gap-8">
-          <aside>
-            <div class="card rounded-xl p-4 mb-4 text-center">
+        <div class="portal-dashboard-shell max-w-7xl mx-auto px-5 py-8 grid md:grid-cols-[220px_1fr] gap-8">
+          <aside class="portal-dashboard-sidebar">
+            <div class="portal-profile-card card rounded-xl p-4 mb-4 text-center">
               <button type="button" onclick="document.getElementById('dashAvatarFile').click()" class="mx-auto mb-2 flex flex-col items-center gap-1" title="Change profile photo" aria-label="Change profile photo">
                 <span class="w-14 h-14 rounded-full flex items-center justify-center overflow-hidden font-display font-bold text-white text-lg" style="background:var(--color-primary)" id="dashAvatarInitial">M</span>
                 <span class="text-[10px] font-semibold" style="color:var(--color-primary)">Change photo</span>
@@ -621,13 +621,13 @@
               <div class="font-semibold text-sm" id="dashUserName">Maria Santos</div>
               <div class="text-xs" id="dashUserRole" style="color:var(--color-muted)">Job Seeker</div>
             </div>
-            <nav id="dashNav" aria-label="Dashboard sections" class="card rounded-xl p-2 text-sm font-medium"></nav>
+            <nav id="dashNav" aria-label="Dashboard sections" class="portal-dash-nav card rounded-xl p-2 text-sm font-medium"></nav>
           </aside>
           <div id="dashContent" class="fade-in"></div>
         </div>
       </section>
 
-      <footer class="border-t mt-12 py-8" style="background:var(--color-primary-dark); border-color:var(--color-border)">
+      <footer class="portal-footer border-t mt-12 py-8" style="background:var(--color-primary-dark); border-color:var(--color-border)">
         <div class="max-w-7xl mx-auto px-5">
           <div class="flex items-center gap-3 mb-4">
             <img src="/gingoog-seal.png" alt="Gingoog City Official Seal" class="w-8 h-8 seal-ring" />

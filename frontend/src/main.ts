@@ -14,6 +14,7 @@ let currentUser: AuthUser | null = null;
 let applications: Application[] = [];
 let pendingStaffReferrals: StaffReferral[] = [];
 let notifications: AppNotification[] = [];
+let activeNotificationsDescription = "";
 let activeHiredNoticeId: number | null = null;
 const shownHiredNoticeIds = new Set<number>();
 let documents: DocumentMeta[] = [];
@@ -30,14 +31,35 @@ function currentNotifications(): AppNotification[] {
   return notifications;
 }
 
+async function markNotificationReadAction(id: number): Promise<void> {
+  const notification = currentNotifications().find((item) => item.id === id);
+  if (!notification || notification.read) return;
+  try {
+    await api.markNotificationRead(id);
+  } catch (err) {
+    showToast(errMsg(err, "Could not mark this notification as read."));
+    return;
+  }
+  notification.read = true;
+  renderNavAuth();
+  if (currentDashTab === "notifications" && document.getElementById("dashContent")) {
+    $("dashContent").innerHTML = notificationsTabHtml(activeNotificationsDescription);
+  }
+}
+
 /** Shared "Notifications" tab body used by both the Job Seeker and Employer
- * dashboards: marks everything read, offers a "Clear All" action, and lets the
- * user delete individual notifications one at a time. */
+ * dashboards: shows read status, offers a "Clear All" action, and lets the
+ * user mark or delete notifications individually. */
 function notificationsTabHtml(description: string): string {
+  activeNotificationsDescription = description;
   const list = currentNotifications();
+  const unreadCount = list.filter((notification) => !notification.read).length;
   return `
     <div class="flex items-start justify-between gap-3 mb-1">
-      <h1 class="font-display text-2xl font-semibold">Notifications</h1>
+      <div>
+        <h1 class="font-display text-2xl font-semibold">Notifications</h1>
+        <p class="text-xs mt-1" style="color:var(--color-muted)">${list.length} notification${list.length === 1 ? "" : "s"}${unreadCount ? ` · ${unreadCount} unread` : ""}</p>
+      </div>
       ${list.length ? `<button onclick="clearAllNotificationsAction()" class="text-xs font-semibold px-3 py-1.5 rounded-lg border flex-shrink-0" style="border-color:var(--color-border); color:var(--color-muted)">Clear All</button>` : ""}
     </div>
     <p class="text-sm mb-6" style="color:var(--color-muted)">${description}</p>
@@ -53,26 +75,27 @@ function notificationsTabHtml(description: string): string {
 
 function notificationRowHtml(n: AppNotification): string {
   return `
-    <div class="card rounded-xl p-4 flex gap-3 items-start">
-      <div class="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style="background:var(--color-accent)"></div>
-      <div class="flex-1 min-w-0"><p class="text-sm">${n.message}</p><p class="text-xs mt-1" style="color:var(--color-muted)">${n.date}</p></div>
-      <button onclick="deleteNotificationAction(${n.id})" title="Delete notification" class="flex-shrink-0 text-xs px-2 py-1 rounded-lg hover:bg-black/5" style="color:var(--color-muted)">&times;</button>
-    </div>`;
+    <article class="notification-row card rounded-xl p-4 flex gap-3 items-start ${n.read ? "is-read" : "is-unread"}">
+      <button type="button" onclick="markNotificationReadAction(${n.id})" class="notification-content flex flex-1 gap-3 items-start min-w-0 text-left" aria-label="${n.read ? "Read" : "Mark as read"}: ${n.message}">
+        <span class="notification-read-indicator" aria-hidden="true"></span>
+        <span class="flex-1 min-w-0"><span class="block text-sm whitespace-pre-line">${n.message}</span><span class="block text-xs mt-2" style="color:var(--color-muted)">${n.date}</span></span>
+      </button>
+      <button onclick="event.stopPropagation(); deleteNotificationAction(${n.id})" title="Delete notification" aria-label="Delete notification" class="flex-shrink-0 text-xs px-2 py-1 rounded-lg hover:bg-black/5" style="color:var(--color-muted)">&times;</button>
+    </article>`;
 }
 
 async function deleteNotificationAction(id: number) {
   const previous = notifications;
   notifications = notifications.filter((n) => n.id !== id);
-  const body = document.getElementById("notificationsListBody");
-  if (body) {
-    body.innerHTML = notifications.length
-      ? notifications.map(notificationRowHtml).join("")
-      : `<p class="text-sm" style="color:var(--color-muted)">You have no notifications yet.</p>`;
+  renderNavAuth();
+  if (currentDashTab === "notifications" && document.getElementById("dashContent")) {
+    $("dashContent").innerHTML = notificationsTabHtml(activeNotificationsDescription);
   }
   try {
     await api.deleteNotification(id);
   } catch (err) {
     notifications = previous;
+    renderNavAuth();
     showToast(errMsg(err, "Could not delete this notification."));
     dashTabInner("notifications");
   }
@@ -81,12 +104,14 @@ async function deleteNotificationAction(id: number) {
 async function clearAllNotificationsAction() {
   const previous = notifications;
   notifications = [];
+  renderNavAuth();
   dashTabInner("notifications");
   try {
     await api.clearAllNotifications();
     showToast("All notifications cleared.");
   } catch (err) {
     notifications = previous;
+    renderNavAuth();
     showToast(errMsg(err, "Could not clear notifications."));
     dashTabInner("notifications");
   }
@@ -442,9 +467,9 @@ function renderNavAuth() {
   if (currentUser) {
     const unread = currentNotifications().filter((n) => !n.read).length;
     area.innerHTML = `
-      <button onclick="nav('dashboard'); dashTab('notifications')" class="relative p-2 rounded-lg hover:bg-black/5" title="Notifications">
+      <button onclick="nav('dashboard'); dashTab('notifications')" class="notification-bell relative p-2 rounded-lg hover:bg-black/5" title="${unread ? `${unread} unread notifications` : "Notifications"}" aria-label="${unread ? `${unread} unread notifications` : "Notifications"}">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-        ${unread > 0 ? `<span class="absolute top-1 right-1 w-2 h-2 rounded-full notif-pulse" style="background:var(--color-warn)"></span>` : ""}
+        ${unread > 0 ? `<span class="notification-count-badge notif-pulse" aria-label="${unread} unread notifications">${unread > 99 ? "99+" : unread}</span>` : ""}
       </button>
       <button onclick="nav('dashboard')" class="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full hover:bg-black/5">
         <div class="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold text-white" style="background:var(--color-primary)">${currentAvatarData ? `<img src="${currentAvatarData}" alt="Profile photo" class="w-full h-full object-cover">` : currentUser.name?.charAt(0) ?? "?"}</div>
@@ -880,25 +905,53 @@ function formatSalary(raw: string): string {
   return s.startsWith("\u20b1") ? s : `\u20b1${s}`;
 }
 
+function vacancyPostedAt(vacancy: Vacancy): string {
+  if (["approved", "expired", "closed"].includes(vacancy.status) && vacancy.approvedAt) {
+    return vacancy.approvedAt;
+  }
+  return vacancy.postedAt || vacancy.posted;
+}
+
+function formatPostingDate(value: string): string {
+  if (!value) return "Date unavailable";
+  const hasTime = /[T ]\d{2}:\d{2}/.test(value);
+  const date = new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value);
+  if (!Number.isFinite(date.getTime())) return "Date unavailable";
+  const options: Intl.DateTimeFormatOptions = hasTime
+    ? { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }
+    : { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC" };
+  const formatted = new Intl.DateTimeFormat("en-PH", options).format(date);
+  return hasTime ? formatted : `${formatted} (time unavailable)`;
+}
+
+function formatVacancyPostedAt(vacancy: Vacancy): string {
+  return formatPostingDate(vacancyPostedAt(vacancy));
+}
+
+function vacancyPostingLabel(vacancy: Vacancy): string {
+  return ["approved", "expired", "closed"].includes(vacancy.status) ? "Posted" : "Submitted";
+}
+
 function jobCard(job: Vacancy): string {
+  const hasApplied = currentUser?.role === "job_seeker"
+    && applications.some((application) => application.vacancyId === job.id);
   return `
   <button onclick="openJob(${job.id})" class="card rounded-xl p-5 text-left hover:shadow-md transition-shadow group">
     <div class="flex items-start justify-between mb-2 gap-2">
       <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded" style="background:#DCEAF7; color:#1D5A85">${job.category}</span>
-      ${matchPillHtml(job) || `<span class="text-[10px]" style="color:var(--color-muted)">${timeAgo(job.posted)}</span>`}
+      <span class="flex items-center gap-2">
+        ${hasApplied ? `<span class="text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap" style="background:#E4EEDD;color:#3F6B2E">Applied</span>` : ""}
+        ${matchPillHtml(job)}
+      </span>
     </div>
     <h3 class="font-display font-semibold text-base mb-1 group-hover:opacity-70">${job.title}</h3>
     <p class="text-sm mb-3" style="color:var(--color-muted)">${job.employer}</p>
+    <p class="text-[11px] mb-3" style="color:var(--color-muted)">Posted ${formatVacancyPostedAt(job)}</p>
     <div class="flex items-center justify-between text-xs" style="color:var(--color-muted)">
       <span>${job.location}</span>
       <span class="font-semibold" style="color:var(--color-primary)">${formatSalary(job.salary)}</span>
     </div>
   </button>`;
-}
-
-function timeAgo(dateStr: string): string {
-  const days = Math.max(0, Math.round((new Date("2026-07-26").getTime() - new Date(dateStr).getTime()) / 86400000));
-  return days === 0 ? "Today" : days === 1 ? "1 day ago" : days + " days ago";
 }
 
 function renderFeaturedJobs() {
@@ -1076,6 +1129,7 @@ function openJob(id: number) {
         <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded" style="background:#DCEAF7; color:#1D5A85">${job.category}</span>
         <h1 class="font-display text-2xl font-semibold mt-3 mb-1">${job.title}</h1>
         <p class="text-sm mb-5" style="color:var(--color-muted)">${job.employer} &middot; ${job.location}</p>
+        <p class="text-xs mb-5" style="color:var(--color-muted)">Posted ${formatVacancyPostedAt(job)}</p>
         <div class="grid sm:grid-cols-3 gap-4 mb-6 text-sm">
           <div class="rounded-lg p-3" style="background:var(--color-bg)"><div class="text-[11px] uppercase" style="color:var(--color-muted)">Salary Range</div><div class="font-semibold">${formatSalary(job.salary)}</div></div>
           <div class="rounded-lg p-3" style="background:var(--color-bg)"><div class="text-[11px] uppercase" style="color:var(--color-muted)">Employment Type</div><div class="font-semibold">${job.type}</div></div>
@@ -1330,6 +1384,7 @@ function tabsForRole(role: string): { key: string; label: string }[] {
       { key: "overview", label: "Overview" },
       { key: "seekers", label: "Job Seekers" },
       { key: "employers", label: "Employers" },
+      { key: "verifiedAccounts", label: "Verified Accounts" },
       { key: "vacancyInventory", label: "Vacancy Inventory" },
       { key: "reports", label: "Reports" },
       { key: "applications", label: "Applications" },
@@ -1786,10 +1841,6 @@ function dashTabInner(tab: string) {
     `;
   }
   if (tab === "notifications") {
-    if (currentNotifications().some((n) => !n.read)) {
-      api.markAllNotificationsRead().catch(() => {});
-    }
-    currentNotifications().forEach((n) => (n.read = true));
     content.innerHTML = notificationsTabHtml("Updates about your applications and referrals.");
   }
 }
@@ -2273,7 +2324,7 @@ let employerVacancies: Vacancy[] = [];
 let employerApplicants: (Application & { seekerName: string; seekerContact: string; seekerSkills: string; seekerEducation: string; seekerCourse: string; seekerExperience: string; vacancyTitle: string })[] = [];
 let showVacancyForm = false;
 let editingVacancyId: number | null = null;
-let employerVacancyView: "draft" | "posted" = "posted";
+let employerVacancyView: "draft" | "posted" | "closed-expired" = "posted";
 
 const EMPLOYER_TYPE_CATEGORIES: Record<string, string[]> = {
   Public: ["National Government Agency", "Local Government Unit", "Government-Owned and Controlled Corporation", "State/Local University or College", "Other Government Agency"],
@@ -2976,7 +3027,7 @@ async function submitDraftVacancy(id: number) {
   }
 }
 
-function setEmployerVacancyView(view: "draft" | "posted") {
+function setEmployerVacancyView(view: "draft" | "posted" | "closed-expired") {
   employerVacancyView = view;
   dashTabInner("vacancies");
 }
@@ -2990,10 +3041,27 @@ async function closeVacancyAction(id: number) {
   try {
     await api.closeEmployerVacancy(id);
     showToast("Vacancy closed.");
+    employerVacancyView = "closed-expired";
     employerVacancies = await api.getEmployerVacancies();
     dashTabInner("vacancies");
   } catch (err) {
     showToast(errMsg(err, "Could not close this vacancy."));
+  }
+}
+
+async function repostVacancyAction(id: number) {
+  if (!await appConfirm("This creates a new vacancy for PESO approval. Existing applications will remain attached to the closed or expired listing.", {
+    title: "Repost this vacancy?",
+    confirmLabel: "Submit for approval",
+  })) return;
+  try {
+    const reposted = await api.repostEmployerVacancy(id);
+    showToast(`"${reposted.title}" was submitted as a new vacancy for PESO approval.`);
+    employerVacancyView = "posted";
+    employerVacancies = await api.getEmployerVacancies();
+    dashTabInner("vacancies");
+  } catch (err) {
+    showToast(errMsg(err, "Could not repost this vacancy."));
   }
 }
 
@@ -3007,13 +3075,15 @@ function employerVacancyRow(v: Vacancy): string {
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
       </div>
       <p class="text-xs" style="color:var(--color-muted)">${v.category || "&mdash;"} &middot; ${v.location || "&mdash;"} &middot; ${v.slots} slot(s) remaining &middot; ${appliedCount} applicant(s)</p>
+      <p class="text-xs mt-1" style="color:var(--color-muted)">${vacancyPostingLabel(v)} ${formatVacancyPostedAt(v)}</p>
       ${v.validUntil ? `<p class="text-xs mt-1" style="color:var(--color-muted)">Valid Until: ${v.validUntil}</p>` : ""}
       ${(v.status === "returned_for_completion" || v.status === "rejected") && v.remarks ? `<p class="text-xs mt-2 rounded-lg px-3 py-2" style="background:#FBE3E1; color:#9B2C22"><strong>Staff Remarks:</strong> ${v.remarks}</p>` : ""}
       <div class="flex flex-wrap gap-2 mt-3">
         ${v.status === "draft" ? `<button onclick="editVacancy(${v.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:var(--color-border)">Edit Draft</button>
           <button onclick="submitDraftVacancy(${v.id})" class="btn-primary text-xs font-semibold px-3 py-1.5 rounded-lg">Submit for Approval</button>` : ""}
         ${v.status === "returned_for_completion" || v.status === "rejected" ? `<button onclick="editVacancy(${v.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:var(--color-primary); color:var(--color-primary)">Edit &amp; Resubmit</button>` : ""}
-        ${v.status === "approved" || v.status === "expired" ? `<button onclick="closeVacancyAction(${v.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:var(--color-border)">Close Vacancy</button>` : ""}
+        ${v.status === "approved" ? `<button onclick="closeVacancyAction(${v.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:var(--color-border)">Close Vacancy</button>` : ""}
+        ${v.status === "expired" || v.status === "closed" ? `<button onclick="repostVacancyAction(${v.id})" class="btn-primary text-xs font-semibold px-3 py-1.5 rounded-lg">Repost for Approval</button>` : ""}
       </div>
     </div>`;
 }
@@ -3348,8 +3418,13 @@ async function renderEmployerDash(tab: string) {
     if (currentUser?.role !== "employer" || currentDashTab !== "vacancies") return;
     const canPost = u.verificationStatus === "verified";
     const draftVacancies = employerVacancies.filter((vacancy) => vacancy.status === "draft");
-    const postedVacancies = employerVacancies.filter((vacancy) => vacancy.status !== "draft");
-    const visibleVacancies = employerVacancyView === "draft" ? draftVacancies : postedVacancies;
+    const closedExpiredVacancies = employerVacancies.filter((vacancy) => vacancy.status === "closed" || vacancy.status === "expired");
+    const postedVacancies = employerVacancies.filter((vacancy) => vacancy.status !== "draft" && vacancy.status !== "closed" && vacancy.status !== "expired");
+    const visibleVacancies = employerVacancyView === "draft"
+      ? draftVacancies
+      : employerVacancyView === "closed-expired"
+        ? closedExpiredVacancies
+        : postedVacancies;
     if (!canPost) {
       showVacancyForm = false;
       editingVacancyId = null;
@@ -3368,8 +3443,9 @@ async function renderEmployerDash(tab: string) {
       <div class="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter vacancies">
         <button onclick="setEmployerVacancyView('posted')" aria-pressed="${employerVacancyView === "posted"}" class="${employerVacancyView === "posted" ? "btn-primary" : "btn-outline"} text-xs font-semibold px-4 py-2 rounded-lg">Posted (${postedVacancies.length})</button>
         <button onclick="setEmployerVacancyView('draft')" aria-pressed="${employerVacancyView === "draft"}" class="${employerVacancyView === "draft" ? "btn-primary" : "btn-outline"} text-xs font-semibold px-4 py-2 rounded-lg">Drafts (${draftVacancies.length})</button>
+        <button onclick="setEmployerVacancyView('closed-expired')" aria-pressed="${employerVacancyView === "closed-expired"}" class="${employerVacancyView === "closed-expired" ? "btn-primary" : "btn-outline"} text-xs font-semibold px-4 py-2 rounded-lg">Closed/Expired (${closedExpiredVacancies.length})</button>
       </div>
-      <div class="space-y-3 stagger-grid">${visibleVacancies.map(employerVacancyRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">${employerVacancyView === "draft" ? "No draft vacancies. Save a vacancy as a draft to finish it later." : "No posted vacancies yet. Submit a vacancy for PESO approval to see it here."}</p>`}</div>
+      <div class="space-y-3 stagger-grid">${visibleVacancies.map(employerVacancyRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">${employerVacancyView === "draft" ? "No draft vacancies. Save a vacancy as a draft to finish it later." : employerVacancyView === "closed-expired" ? "No closed or expired vacancies." : "No posted vacancies yet. Submit a vacancy for PESO approval to see it here."}</p>`}</div>
     `;
     if (canPost && showVacancyForm) {
       mountVacancyLocationPicker(editingVacancyId ? employerVacancies.find((v) => v.id === editingVacancyId) : undefined);
@@ -3392,8 +3468,6 @@ async function renderEmployerDash(tab: string) {
   }
 
   if (tab === "notifications") {
-    if (currentNotifications().some((n) => !n.read)) api.markAllNotificationsRead().catch(() => {});
-    currentNotifications().forEach((n) => (n.read = true));
     content.innerHTML = notificationsTabHtml("Updates about your verification, vacancy approvals, and referrals.");
   }
 }
@@ -3743,6 +3817,7 @@ function staffVacancyApprovalRow(v: Vacancy): string {
         <div>
           <h4 class="font-semibold text-sm">${v.title}</h4>
           <p class="text-xs" style="color:var(--color-muted)">${v.employer} &middot; ${v.employerEmail} &middot; ${v.category} &middot; ${v.location}</p>
+          <p class="text-xs mt-1" style="color:var(--color-muted)">${vacancyPostingLabel(v)} ${formatVacancyPostedAt(v)}</p>
         </div>
         <span class="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0" style="background:${(VACANCY_STATUS_META[v.status] || VACANCY_STATUS_META.pending_approval).bg}; color:${(VACANCY_STATUS_META[v.status] || VACANCY_STATUS_META.pending_approval).fg}">${(VACANCY_STATUS_META[v.status] || VACANCY_STATUS_META.pending_approval).label}</span>
       </div>
@@ -3767,13 +3842,24 @@ function vacancyDetailField(label: string, value: string | number | undefined | 
   const display = value === undefined || value === null || value === "" ? "&mdash;" : String(value);
   return `<div><div class="text-[11px] uppercase tracking-wide" style="color:var(--color-muted)">${label}</div><div class="text-sm font-medium">${display}</div></div>`;
 }
+function findVacancyById(list: Vacancy[], id: number): Vacancy | undefined {
+  return list.find((vacancy) => Number(vacancy.id) === Number(id));
+}
+function showVacancyDetailsLoading(): void {
+  $("vacancyDetailModalTitle").textContent = "Vacancy Details";
+  $("vacancyDetailModalBody").innerHTML = `<p class="text-sm p-8" style="color:var(--color-muted)">Loading vacancy details&hellip;</p>`;
+  $("vacancyDetailOverlay").classList.remove("hidden");
+}
+function showVacancyDetailsError(message: string): void {
+  $("vacancyDetailModalBody").innerHTML = `<p class="text-sm p-8" style="color:#C0392B">${message}</p>`;
+}
 function vacancyDetailModalHtml(v: Vacancy): string {
   const meta = VACANCY_STATUS_META[v.status] || VACANCY_STATUS_META.pending_approval;
   const mapCoordinates = validMapCoordinates(v.latitude, v.longitude);
   return `
     <div class="mb-4 flex items-center gap-2">
       <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${meta.bg}; color:${meta.fg}">${meta.label}</span>
-      <span class="text-xs" style="color:var(--color-muted)">Posted ${v.posted}</span>
+      <span class="text-xs" style="color:var(--color-muted)">${vacancyPostingLabel(v)} ${formatVacancyPostedAt(v)}</span>
     </div>
     ${v.remarks && (v.status === "returned_for_completion" || v.status === "rejected") ? `<p class="text-xs mb-4 rounded-lg px-3 py-2" style="background:#FBE3E1; color:#9B2C22"><strong>Staff Remarks:</strong> ${v.remarks}</p>` : ""}
 
@@ -3814,14 +3900,23 @@ function vacancyDetailModalHtml(v: Vacancy): string {
     ${(v.qualification || []).length ? `<div class="mt-3"><div class="text-[11px] uppercase tracking-wide mb-1" style="color:var(--color-muted)">Qualification Summary</div><ul class="text-sm list-disc pl-5">${(v.qualification || []).map((q) => `<li>${q}</li>`).join("")}</ul></div>` : ""}
   `;
 }
-function openVacancyDetailModal(id: number) {
-  const v = staffVacanciesList.find((x) => x.id === id);
+async function openVacancyDetailModal(id: number) {
+  let v = findVacancyById(staffVacanciesList, id);
   const overlay = $("vacancyDetailOverlay");
   const title = $("vacancyDetailModalTitle");
   const body = $("vacancyDetailModalBody");
   if (!v) {
-    body.innerHTML = `<p class="text-sm p-8" style="color:#C0392B">Could not find this vacancy.</p>`;
-    overlay.classList.remove("hidden");
+    showVacancyDetailsLoading();
+    try {
+      v = findVacancyById(await api.staffGetVacancies(), id);
+    } catch (err) {
+      showVacancyDetailsError("Could not load this vacancy. Please try again.");
+      showToast(errMsg(err, "Could not load this vacancy."));
+      return;
+    }
+  }
+  if (!v) {
+    showVacancyDetailsError("Could not find this vacancy.");
     return;
   }
   title.textContent = v.title || "Vacancy Details";
@@ -3832,18 +3927,31 @@ function openVacancyDetailModal(id: number) {
     requestAnimationFrame(() => mountLocationMap(`staffVacancyMap-${v.id}`, mapCoordinates));
   }
 }
-function openVacancyDetailsModal(id: number) {
-  const vacancy = vacancies.find((item) => item.id === id)
-    || pendingStaffReferrals.find((referral) => referral.vacancy.id === id)?.vacancy;
+async function openVacancyDetailsModal(id: number) {
+  let vacancy = findVacancyById(vacancies, id)
+    || findVacancyById(pendingStaffReferrals.map((referral) => referral.vacancy), id);
   const overlay = $("vacancyDetailOverlay");
   const title = $("vacancyDetailModalTitle");
   const body = $("vacancyDetailModalBody");
   if (!vacancy) {
-    body.innerHTML = `<p class="text-sm p-8" style="color:#C0392B">Could not find this vacancy.</p>`;
-    overlay.classList.remove("hidden");
+    showVacancyDetailsLoading();
+    try {
+      vacancy = await api.getVacancy(id);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        showVacancyDetailsError("Could not find this vacancy.");
+      } else {
+        showVacancyDetailsError("Could not load this vacancy. Please try again.");
+        showToast(errMsg(err, "Could not load this vacancy."));
+      }
+      return;
+    }
+  }
+  if (!vacancy) {
+    showVacancyDetailsError("Could not find this vacancy.");
     return;
   }
-  const referral = pendingStaffReferrals.find((item) => item.vacancy.id === id);
+  const referral = pendingStaffReferrals.find((item) => Number(item.vacancy.id) === Number(id));
   const alreadyApplied = currentApplications().some((application) => application.vacancyId === id);
   title.textContent = vacancy.title || "Vacancy Details";
   body.innerHTML = `${vacancyDetailModalHtml(vacancy)}
@@ -4175,8 +4283,6 @@ async function renderStaffDash(tab: string) {
   const content = $("dashContent");
 
   if (tab === "notifications") {
-    if (currentNotifications().some((n) => !n.read)) api.markAllNotificationsRead().catch(() => {});
-    currentNotifications().forEach((n) => (n.read = true));
     content.innerHTML = notificationsTabHtml("Updates about PESO account and system activity.");
     return;
   }
@@ -4525,8 +4631,11 @@ let adminEmployerDetail: { profile: AuthUser; vacancies: Vacancy[]; applications
  * lands on that exact Employer page again, not the generic Seekers list. */
 let adminSeekerDetailReturnToEmployer: string | null = null;
 let adminSeekerDetailReturnToInventory = false;
+let adminVerifiedAccountsReturn = false;
 let adminInventoryVacancies: Vacancy[] = [];
 let adminInventoryApplications: (Application & { seekerEmail: string; seekerName: string; seekerContact?: string; vacancyTitle: string; vacancyEmployer: string })[] = [];
+type AdminVacancyInventoryFilter = "all" | "live" | "pending" | "closed-expired";
+let adminVacancyInventoryFilter: AdminVacancyInventoryFilter = "all";
 
 function escapeReportHtml(value: string | number): string {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -4593,7 +4702,7 @@ function adminDailyReportTables(report: api.AdminDailyReport): string {
   const vacancyRows = report.vacancies.map((vacancy) => `<tr>
     <td>${escapeReportHtml(vacancy.title || "—")}</td><td>${escapeReportHtml(vacancy.employer || "—")}</td>
     <td>${escapeReportHtml(vacancy.location || "—")}</td><td>${escapeReportHtml(vacancy.slots)}</td>
-    <td>${escapeReportHtml(vacancy.posted || "—")}</td><td>${escapeReportHtml(vacancy.status.replace(/_/g, " ") || "—")}</td>
+    <td>${escapeReportHtml(formatPostingDate(vacancy.posted) || "—")}</td><td>${escapeReportHtml(vacancy.status.replace(/_/g, " ") || "—")}</td>
   </tr>`).join("");
   const seekerRows = report.seekers.map((seeker) => `<tr>
     <td>${escapeReportHtml(seeker.name || "—")}</td><td>${escapeReportHtml(seeker.registeredAt || "—")}</td>
@@ -4606,7 +4715,7 @@ function adminDailyReportTables(report: api.AdminDailyReport): string {
         <div><h2 class="font-semibold text-base">Job Vacancy Report</h2><p class="text-xs mt-1" style="color:var(--color-muted)">${report.vacancies.length} vacancy record(s)</p></div>
         <button type="button" class="btn-outline text-xs font-semibold px-3 py-2 rounded-lg" onclick="downloadAdminDailyReport('vacancies')">Download Vacancy Report (PDF)</button>
       </div>
-      <div class="report-table-scroll"><table class="report-table"><thead><tr><th>Job title</th><th>Employer / company</th><th>Location</th><th>Positions</th><th>Date posted</th><th>Status</th></tr></thead>
+      <div class="report-table-scroll"><table class="report-table"><thead><tr><th>Job title</th><th>Employer / company</th><th>Location</th><th>Positions</th><th>Date and time posted</th><th>Status</th></tr></thead>
       <tbody>${vacancyRows || `<tr><td class="report-empty" colspan="6">No job vacancies found for this date.</td></tr>`}</tbody></table></div>
     </section>
     <section class="card rounded-xl p-4 sm:p-5 report-section">
@@ -4672,6 +4781,7 @@ async function downloadAdminDailyReport(type: "vacancies" | "seekers" | "complet
 }
 
 async function adminOpenSeekerDetail(email: string) {
+  adminVerifiedAccountsReturn = currentDashTab === "verifiedAccounts";
   adminSeekerDetailEmail = email;
   adminSeekerDetailReturnToEmployer = null;
   adminSeekerDetailReturnToInventory = false;
@@ -4717,6 +4827,7 @@ async function adminViewInventorySeekerProfile(seekerEmail: string) {
   dashTabInner("seekers");
 }
 async function adminOpenEmployerDetail(email: string) {
+  adminVerifiedAccountsReturn = currentDashTab === "verifiedAccounts";
   adminEmployerDetailEmail = email;
   try {
     adminEmployerDetail = await api.adminGetEmployer(email);
@@ -4745,13 +4856,20 @@ async function adminBackFromSeekerDetail() {
     }
     return;
   }
+  if (adminVerifiedAccountsReturn) {
+    adminVerifiedAccountsReturn = false;
+    dashTabInner("verifiedAccounts");
+    return;
+  }
   dashTabInner("seekers");
 }
 function adminBackFromEmployerDetail() {
+  const returnToVerifiedAccounts = adminVerifiedAccountsReturn;
+  adminVerifiedAccountsReturn = false;
   if (adminSeekerDetailReturnToEmployer === adminEmployerDetailEmail) adminSeekerDetailReturnToEmployer = null;
   adminEmployerDetailEmail = null;
   adminEmployerDetail = null;
-  dashTabInner("employers");
+  dashTabInner(returnToVerifiedAccounts ? "verifiedAccounts" : "employers");
 }
 
 async function adminDeleteSeekerAction(email: string) {
@@ -4863,11 +4981,62 @@ function adminEmployerListRow(e: AuthUser & { vacancyCount: number }): string {
 function adminVacancyInventoryCardHtml(
   vacancy: Vacancy,
 ): string {
+  const status = VACANCY_STATUS_META[vacancy.status] || VACANCY_STATUS_META.pending_approval;
+  const isSample = vacancy.title.trim().toLowerCase().startsWith("sample") || vacancy.employer === "SAMPLE DATA - NOT A REAL EMPLOYER";
   return `
-    <article class="card rounded-xl p-4 flex items-center justify-between gap-3">
-      <h2 class="font-semibold text-base min-w-0">${vacancy.title || "(untitled vacancy)"}</h2>
-      <button onclick="adminOpenVacancyInventoryDetails(${vacancy.id})" class="btn-outline text-xs font-semibold px-4 py-2 rounded-lg flex-shrink-0">View Details</button>
+    <article class="card rounded-xl p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+      <div class="flex items-start justify-between gap-3">
+        <span class="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full" style="background:#DCEAF7; color:#1D5A85">${vacancy.category || "Uncategorized"}</span>
+        <span class="text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap" style="background:${status.bg}; color:${status.fg}">${status.label}</span>
+      </div>
+      <div class="min-w-0">
+        <h2 class="font-semibold text-base leading-snug">${vacancy.title || "(untitled vacancy)"}</h2>
+        <p class="text-xs mt-1 truncate" style="color:var(--color-muted)">${vacancy.employer || "Employer not specified"}</p>
+      </div>
+      <div class="space-y-2 text-xs" style="color:var(--color-muted)">
+        <p class="flex items-center gap-2"><span class="font-semibold" style="color:var(--color-text)">Location</span><span class="truncate">${vacancy.location || "Not specified"}</span></p>
+        <p><span class="font-semibold" style="color:var(--color-text)">${vacancyPostingLabel(vacancy)}</span> ${formatVacancyPostedAt(vacancy)}</p>
+      </div>
+      <div class="flex items-center justify-between gap-3 border-t pt-3 mt-auto" style="border-color:var(--color-border)">
+        ${isSample ? `<span class="text-[10px] font-semibold px-2 py-1 rounded-full" style="background:#FFF3D6;color:#805B10">SAMPLE LISTING</span>` : `<span class="text-xs" style="color:var(--color-muted)">${vacancy.slots} slot(s)</span>`}
+        <button onclick="adminOpenVacancyInventoryDetails(${vacancy.id})" class="btn-outline text-xs font-semibold px-4 py-2 rounded-lg">View Details</button>
+      </div>
     </article>`;
+}
+
+function adminVacancyMatchesInventoryFilter(vacancy: Vacancy): boolean {
+  if (adminVacancyInventoryFilter === "live") return vacancy.status === "approved";
+  if (adminVacancyInventoryFilter === "pending") return vacancy.status === "pending_approval";
+  if (adminVacancyInventoryFilter === "closed-expired") return vacancy.status === "closed" || vacancy.status === "expired";
+  return true;
+}
+
+function renderAdminVacancyInventoryList(): void {
+  const grid = document.getElementById("portalVacancyGrid");
+  if (!grid) return;
+  const vacancies = adminInventoryVacancies.filter(adminVacancyMatchesInventoryFilter);
+  const labels: Record<AdminVacancyInventoryFilter, string> = {
+    all: "all vacancies",
+    live: "live vacancies",
+    pending: "vacancies pending review",
+    "closed-expired": "closed or expired vacancies",
+  };
+  const summary = document.getElementById("adminVacancyInventoryFilterSummary");
+  if (summary) {
+    summary.textContent = `Showing ${vacancies.length} of ${adminInventoryVacancies.length} ${labels[adminVacancyInventoryFilter]}.`;
+  }
+  grid.innerHTML = vacancies.map(adminVacancyInventoryCardHtml).join("")
+    || `<p class="card rounded-xl p-6 text-sm sm:col-span-2 xl:col-span-3" style="color:var(--color-muted)">No ${labels[adminVacancyInventoryFilter]} found.</p>`;
+}
+
+function setAdminVacancyInventoryFilter(filter: AdminVacancyInventoryFilter): void {
+  adminVacancyInventoryFilter = filter;
+  document.querySelectorAll<HTMLButtonElement>("[data-vacancy-inventory-filter]").forEach((button) => {
+    const selected = button.dataset.vacancyInventoryFilter === filter;
+    button.setAttribute("aria-pressed", String(selected));
+    button.classList.toggle("is-selected", selected);
+  });
+  renderAdminVacancyInventoryList();
 }
 
 function adminVacancyInventoryDetailsHtml(
@@ -4882,6 +5051,7 @@ function adminVacancyInventoryDetailsHtml(
       <span class="text-xs font-semibold px-2.5 py-1 rounded-full" style="background:${(VACANCY_STATUS_META[vacancy.status] || VACANCY_STATUS_META.pending_approval).bg}; color:${(VACANCY_STATUS_META[vacancy.status] || VACANCY_STATUS_META.pending_approval).fg}">${(VACANCY_STATUS_META[vacancy.status] || VACANCY_STATUS_META.pending_approval).label}</span>
       <span class="text-xs" style="color:var(--color-muted)">${vacancy.employer} &middot; ${vacancy.employerEmail || "Demo vacancy"}</span>
     </div>
+    <p class="text-xs mb-4" style="color:var(--color-muted)">${vacancyPostingLabel(vacancy)} ${formatVacancyPostedAt(vacancy)}</p>
     <div class="grid sm:grid-cols-2 gap-2 text-sm mb-4">
       <div><strong>Location:</strong> ${vacancy.location || "&mdash;"}</div>
       <div><strong>Category:</strong> ${vacancy.category || "&mdash;"}</div>
@@ -4894,9 +5064,6 @@ function adminVacancyInventoryDetailsHtml(
       <div><strong>Minimum experience:</strong> ${vacancy.minExperienceYears} year(s)</div>
       <div><strong>Required skills:</strong> ${vacancy.requiredSkills.join(", ") || "&mdash;"}</div>
       <div><strong>Work experience:</strong> ${vacancy.workExperience || "&mdash;"}</div>
-    </div>
-    <div class="flex justify-end mb-4">
-    <button onclick="adminDeleteVacancyAction(${vacancy.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete Vacancy</button>
     </div>
     <p class="text-sm whitespace-pre-line mb-4">${vacancy.description || "No job description provided."}</p>
     ${vacancy.qualification.length ? `<div class="mb-3"><strong class="text-xs">Qualifications</strong><ul class="text-xs list-disc pl-5 mt-1">${vacancy.qualification.map((qualification) => `<li>${qualification}</li>`).join("")}</ul></div>` : ""}
@@ -4913,17 +5080,29 @@ function adminVacancyInventoryDetailsHtml(
             <button onclick="adminViewInventorySeekerProfile('${application.seekerEmail}')" class="text-xs font-semibold px-3 py-1.5 rounded-lg border flex-shrink-0" style="border-color:var(--color-primary); color:var(--color-primary)">View full profile</button>
           </div>`).join("")}</div>`
         : `<p class="text-xs" style="color:var(--color-muted)">No applicant has been marked as hired for this vacancy yet.</p>`}
+    <div class="flex justify-end mt-4">
+      <button onclick="adminDeleteVacancyAction(${vacancy.id})" class="text-xs font-semibold px-3 py-1.5 rounded-lg border" style="border-color:#C0392B; color:#C0392B">Delete Vacancy</button>
+    </div>
   `;
 }
 
-function adminOpenVacancyInventoryDetails(id: number) {
-  const vacancy = adminInventoryVacancies.find((item) => item.id === id);
+async function adminOpenVacancyInventoryDetails(id: number) {
+  let vacancy = findVacancyById(adminInventoryVacancies, id);
   const overlay = $("vacancyDetailOverlay");
   const title = $("vacancyDetailModalTitle");
   const body = $("vacancyDetailModalBody");
   if (!vacancy) {
-    body.innerHTML = `<p class="text-sm p-8" style="color:#C0392B">Could not find this vacancy.</p>`;
-    overlay.classList.remove("hidden");
+    showVacancyDetailsLoading();
+    try {
+      vacancy = findVacancyById(await api.adminGetVacancies(), id);
+    } catch (err) {
+      showVacancyDetailsError("Could not load this vacancy. Please try again.");
+      showToast(errMsg(err, "Could not load this vacancy."));
+      return;
+    }
+  }
+  if (!vacancy) {
+    showVacancyDetailsError("Could not find this vacancy.");
     return;
   }
   title.textContent = vacancy.title || "Vacancy Details";
@@ -5198,8 +5377,6 @@ async function renderAdminDash(tab: string) {
   const content = $("dashContent");
 
   if (tab === "notifications") {
-    if (currentNotifications().some((n) => !n.read)) api.markAllNotificationsRead().catch(() => {});
-    currentNotifications().forEach((n) => (n.read = true));
     content.innerHTML = notificationsTabHtml("Updates about PESO account and system activity.");
     return;
   }
@@ -5220,11 +5397,35 @@ async function renderAdminDash(tab: string) {
       <h1 class="font-display text-2xl font-semibold mb-1">Admin Dashboard</h1>
       <p class="text-sm mb-6" style="color:var(--color-muted)">Complete oversight of every account, profile, and verification history in the system.</p>
       <div class="grid sm:grid-cols-4 gap-4 mb-8 stagger-grid">
-        <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.length}</div><div class="text-xs" style="color:var(--color-muted)">Job Seekers</div></div>
-        <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${employers.length}</div><div class="text-xs" style="color:var(--color-muted)">Employers</div></div>
-        <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${staff.length}</div><div class="text-xs" style="color:var(--color-muted)">Staff Accounts</div></div>
-        <div class="card rounded-xl p-5"><div class="text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.filter((s) => s.verificationStatus === "verified").length + employers.filter((e) => e.verificationStatus === "verified").length}</div><div class="text-xs" style="color:var(--color-muted)">Verified Accounts</div></div>
+        <button type="button" onclick="dashTab('seekers')" aria-label="View ${seekers.length} Job Seeker accounts" class="admin-overview-stat card rounded-xl p-5 text-left"><span class="block text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.length}</span><span class="block text-xs" style="color:var(--color-muted)">Job Seekers</span></button>
+        <button type="button" onclick="dashTab('employers')" aria-label="View ${employers.length} Employer accounts" class="admin-overview-stat card rounded-xl p-5 text-left"><span class="block text-2xl font-display font-bold" style="color:var(--color-primary)">${employers.length}</span><span class="block text-xs" style="color:var(--color-muted)">Employers</span></button>
+        <button type="button" onclick="dashTab('staffmgmt')" aria-label="View ${staff.length} Staff accounts" class="admin-overview-stat card rounded-xl p-5 text-left"><span class="block text-2xl font-display font-bold" style="color:var(--color-primary)">${staff.length}</span><span class="block text-xs" style="color:var(--color-muted)">Staff Accounts</span></button>
+        <button type="button" onclick="dashTab('verifiedAccounts')" aria-label="View ${seekers.filter((s) => s.verificationStatus === "verified").length + employers.filter((e) => e.verificationStatus === "verified").length} verified accounts" class="admin-overview-stat card rounded-xl p-5 text-left"><span class="block text-2xl font-display font-bold" style="color:var(--color-primary)">${seekers.filter((s) => s.verificationStatus === "verified").length + employers.filter((e) => e.verificationStatus === "verified").length}</span><span class="block text-xs" style="color:var(--color-muted)">Verified Accounts</span></button>
       </div>
+    `;
+    return;
+  }
+
+  if (tab === "verifiedAccounts") {
+    content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">Verified Accounts</h1><p class="text-sm mb-6" style="color:var(--color-muted)">Loading verified Job Seeker and Employer accounts&hellip;</p>`;
+    try {
+      [adminSeekersList, adminEmployersList] = await Promise.all([api.adminGetSeekers(), api.adminGetEmployers()]);
+    } catch (err) {
+      if (currentUser?.role !== "admin" || currentDashTab !== "verifiedAccounts") return;
+      showToast(errMsg(err, "Could not load verified accounts."));
+      content.innerHTML = `<h1 class="font-display text-2xl font-semibold mb-1">Verified Accounts</h1><p class="text-sm" style="color:var(--color-muted)">Verified accounts could not be loaded. Please try again.</p>`;
+      return;
+    }
+    if (currentUser?.role !== "admin" || currentDashTab !== "verifiedAccounts") return;
+    const verifiedSeekers = adminSeekersList.filter((seeker) => seeker.verificationStatus === "verified");
+    const verifiedEmployers = adminEmployersList.filter((employer) => employer.verificationStatus === "verified");
+    content.innerHTML = `
+      <h1 class="font-display text-2xl font-semibold mb-1">Verified Accounts</h1>
+      <p class="text-sm mb-6" style="color:var(--color-muted)">Staff-verified Job Seeker and Employer accounts.</p>
+      <h2 class="font-semibold text-sm mb-3">Job Seekers (${verifiedSeekers.length})</h2>
+      <div class="space-y-3 mb-6 stagger-grid">${verifiedSeekers.map(adminSeekerListRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">No verified Job Seeker accounts.</p>`}</div>
+      <h2 class="font-semibold text-sm mb-3">Employers (${verifiedEmployers.length})</h2>
+      <div class="space-y-3 stagger-grid">${verifiedEmployers.map(adminEmployerListRow).join("") || `<p class="text-sm" style="color:var(--color-muted)">No verified Employer accounts.</p>`}</div>
     `;
     return;
   }
@@ -5292,11 +5493,27 @@ async function renderAdminDash(tab: string) {
     if (currentUser?.role !== "admin" || currentDashTab !== "vacancyInventory") return;
     adminInventoryVacancies = inventoryVacancies;
     adminInventoryApplications = inventoryApplications;
+    const activeCount = inventoryVacancies.filter((vacancy) => vacancy.status === "approved").length;
+    const pendingCount = inventoryVacancies.filter((vacancy) => vacancy.status === "pending_approval").length;
+    const closedCount = inventoryVacancies.filter((vacancy) => vacancy.status === "closed" || vacancy.status === "expired").length;
     content.innerHTML = `
-      <h1 class="font-display text-2xl font-semibold mb-1">Vacancy Inventory</h1>
-      <p class="text-sm mb-6" style="color:var(--color-muted)">Select a vacancy to view its details and hired job seekers.</p>
-      <div class="space-y-3 stagger-grid">${inventoryVacancies.map(adminVacancyInventoryCardHtml).join("") || `<p class="text-sm" style="color:var(--color-muted)">No vacancies have been posted.</p>`}</div>
+      <div class="flex flex-wrap items-end justify-between gap-4 mb-5">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:var(--color-primary)">Admin workspace</p>
+          <h1 class="font-display text-2xl sm:text-3xl font-semibold mb-1">Vacancy Inventory</h1>
+          <p class="text-sm" style="color:var(--color-muted)">Review listings, posting details, and hiring outcomes.</p>
+        </div>
+        <button type="button" class="portal-inventory-reset text-xs font-semibold px-3 py-1.5 rounded-full" data-vacancy-inventory-filter="all" aria-pressed="${adminVacancyInventoryFilter === "all"}" style="background:#EAF0F8;color:var(--color-primary)" onclick="setAdminVacancyInventoryFilter('all')" aria-label="Show all ${inventoryVacancies.length} vacancies">${inventoryVacancies.length} total listing${inventoryVacancies.length === 1 ? "" : "s"} · Show all</button>
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        <button type="button" class="portal-inventory-stat card rounded-xl p-3 sm:p-4 text-left" data-vacancy-inventory-filter="live" aria-pressed="${adminVacancyInventoryFilter === "live"}" onclick="setAdminVacancyInventoryFilter('live')"><span class="block text-xl sm:text-2xl font-semibold" style="color:var(--color-primary)">${activeCount}</span><span class="block text-[11px] sm:text-xs" style="color:var(--color-muted)">Live</span></button>
+        <button type="button" class="portal-inventory-stat card rounded-xl p-3 sm:p-4 text-left" data-vacancy-inventory-filter="pending" aria-pressed="${adminVacancyInventoryFilter === "pending"}" onclick="setAdminVacancyInventoryFilter('pending')"><span class="block text-xl sm:text-2xl font-semibold" style="color:#8A5A0F">${pendingCount}</span><span class="block text-[11px] sm:text-xs" style="color:var(--color-muted)">Pending review</span></button>
+        <button type="button" class="portal-inventory-stat card rounded-xl p-3 sm:p-4 text-left" data-vacancy-inventory-filter="closed-expired" aria-pressed="${adminVacancyInventoryFilter === "closed-expired"}" onclick="setAdminVacancyInventoryFilter('closed-expired')"><span class="block text-xl sm:text-2xl font-semibold" style="color:#526273">${closedCount}</span><span class="block text-[11px] sm:text-xs" style="color:var(--color-muted)">Closed / expired</span></button>
+      </div>
+      <p id="adminVacancyInventoryFilterSummary" class="text-xs mb-3" style="color:var(--color-muted)" aria-live="polite"></p>
+      <div id="portalVacancyGrid" class="portal-vacancy-grid grid sm:grid-cols-2 xl:grid-cols-3 gap-4 stagger-grid"></div>
     `;
+    setAdminVacancyInventoryFilter(adminVacancyInventoryFilter);
     return;
   }
 
@@ -5436,6 +5653,7 @@ declare global {
     adminChangeReportMonth: typeof adminChangeReportMonth;
     renderAdminReports: typeof renderAdminReports;
     downloadAdminDailyReport: typeof downloadAdminDailyReport;
+    setAdminVacancyInventoryFilter: typeof setAdminVacancyInventoryFilter;
     searchVacancyLocations: typeof searchVacancyLocations;
     selectVacancyLocationResult: typeof selectVacancyLocationResult;
     vacancyLocationTextChanged: typeof vacancyLocationTextChanged;
@@ -5488,6 +5706,7 @@ declare global {
     referVacancyChanged: typeof referVacancyChanged;
     referSeekerAction: typeof referSeekerAction;
     setEmployerVacancyView: typeof setEmployerVacancyView;
+    markNotificationReadAction: typeof markNotificationReadAction;
     deleteNotificationAction: typeof deleteNotificationAction;
     clearAllNotificationsAction: typeof clearAllNotificationsAction;
     adminClearActivityLogAction: typeof adminClearActivityLogAction;
@@ -5499,6 +5718,7 @@ declare global {
     staffReactivateEmployerAction: typeof staffReactivateEmployerAction;
     submitDraftVacancy: typeof submitDraftVacancy;
     closeVacancyAction: typeof closeVacancyAction;
+    repostVacancyAction: typeof repostVacancyAction;
     updateEmployerApplicationStatusAction: typeof updateEmployerApplicationStatusAction;
     openEmployerSeekerProfile: typeof openEmployerSeekerProfile;
     closeSeekerProfileModal: typeof closeSeekerProfileModal;
@@ -5560,6 +5780,7 @@ window.adminSelectReportDate = adminSelectReportDate;
 window.adminChangeReportMonth = adminChangeReportMonth;
 window.renderAdminReports = renderAdminReports;
 window.downloadAdminDailyReport = downloadAdminDailyReport;
+window.setAdminVacancyInventoryFilter = setAdminVacancyInventoryFilter;
 window.searchVacancyLocations = searchVacancyLocations;
 window.selectVacancyLocationResult = selectVacancyLocationResult;
 window.vacancyLocationTextChanged = vacancyLocationTextChanged;
@@ -5612,6 +5833,7 @@ window.staffRejectVacancyAction = staffRejectVacancyAction;
 window.referVacancyChanged = referVacancyChanged;
 window.referSeekerAction = referSeekerAction;
 window.setEmployerVacancyView = setEmployerVacancyView;
+window.markNotificationReadAction = markNotificationReadAction;
 window.deleteNotificationAction = deleteNotificationAction;
 window.clearAllNotificationsAction = clearAllNotificationsAction;
 window.adminClearActivityLogAction = adminClearActivityLogAction;
@@ -5623,6 +5845,7 @@ window.staffSuspendEmployerAction = staffSuspendEmployerAction;
 window.staffReactivateEmployerAction = staffReactivateEmployerAction;
 window.submitDraftVacancy = submitDraftVacancy;
 window.closeVacancyAction = closeVacancyAction;
+window.repostVacancyAction = repostVacancyAction;
 window.updateEmployerApplicationStatusAction = updateEmployerApplicationStatusAction;
 window.openEmployerSeekerProfile = openEmployerSeekerProfile;
 window.closeSeekerProfileModal = closeSeekerProfileModal;

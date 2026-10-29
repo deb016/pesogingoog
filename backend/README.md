@@ -118,13 +118,19 @@ Staff/Admin account creation or password changes.
 | GET | `/api/vacancies/:id` | One vacancy |
 
 Employer vacancy forms include an interactive OpenStreetMap location picker.
-The Employer dashboard separates saved Draft vacancies from Posted vacancies,
-including those pending approval, approved, returned, rejected, expired, or closed.
+The Employer dashboard separates vacancies into Drafts, Posted (pending approval,
+approved, returned, or rejected), and Closed/Expired. Closed or expired vacancies
+are removed from Posted and remain available in Closed/Expired for reposting.
 Employers choose an expiry period of 2–5 days. The period starts when PESO approves
 the vacancy; expired approved vacancies are removed from public listings automatically.
+Vacancy cards and details show the posting weekday, date, and local time (Asia/Manila).
+Approval time is used for live listings; pending listings show their submission time.
+Older records without a stored time show the date and indicate that the time is unavailable.
 A map pin is required before submitting a vacancy for PESO approval; its
 latitude and longitude are saved with the listing and shown on the job detail
-page. OpenStreetMap attribution is displayed on the map.
+page. OpenStreetMap attribution is displayed on the map. Required vacancy fields
+reject placeholder values such as `None`; approved records with an invalid title
+or category are excluded from public listings and homepage vacancy counts.
 
 ### Profile
 
@@ -196,6 +202,8 @@ const toBase64 = (file) => new Promise((res) => {
 | POST | `/api/employer/vacancies` | Create a draft or submit a vacancy; `expiryDays` must be 2, 3, 4, or 5 |
 | PUT | `/api/employer/vacancies/:id` | Update a draft or returned vacancy, including `expiryDays` |
 | POST | `/api/employer/vacancies/:id/submit` | Submit a draft or returned vacancy for PESO approval |
+| POST | `/api/employer/vacancies/:id/close` | Close an approved or expired vacancy |
+| POST | `/api/employer/vacancies/:id/repost` | Create a fresh pending-approval listing from an expired or closed vacancy; existing applications remain on the old listing |
 | GET | `/api/employer/applications` | Applications for the employer's own vacancies, with the seeker summary fields (name, contact, skills, education, experience) already used on the Applications tab |
 | GET | `/api/employer/applications/:id/seeker` | The applicant's full profile (education, skills, trainings, eligibilities, licenses, work experience, job preferences, documents-on-file list) — powers the "View Profile" button. 404s unless `:id` is an application for one of the requesting employer's own vacancies |
 | PATCH | `/api/employer/applications/:id` | `{ employerStatus, remarks? }` — moves the employer's own pipeline status and auto-notifies the seeker |

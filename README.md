@@ -121,7 +121,9 @@ without touching the Admin, Staff, or Job Seeker modules:
   employer can **Edit & Resubmit** a returned/rejected vacancy → **Approved**
   (visible to Job Seekers) → **Expired** (automatic, once "Valid Until"
   passes) or **Close** (employer-initiated, e.g. position filled). The
-  Qualification Requirements section (Work Experience, PWD acceptance +
+  Employer can repost an expired or closed vacancy as a fresh listing for
+  PESO approval; past applications remain attached to the original listing.
+  The Qualification Requirements section (Work Experience, PWD acceptance +
   types, Returning OFW acceptance, Course/SHS Strand, License, Certification,
   Eligibility, Language/Dialect) is captured alongside the existing
   Education/Skills/Experience fields the match-score engine already uses.
